@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地球人观察日记 · 游戏流程演示</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#05090f;--surface:#0c1520;--surface2:#131f2e;
+  --border:rgba(100,200,255,0.15);--accent:#00d4ff;--accent2:#39ff14;
+  --text:#c8d8e8;--dim:#607890;
+  --red:#ff4455;--blue:#4d9fff;--green:#3dffaa;--yellow:#ffe44d;
+  --red-bg:rgba(255,68,85,0.1);--blue-bg:rgba(77,159,255,0.1);
+  --green-bg:rgba(61,255,170,0.1);--yellow-bg:rgba(255,228,77,0.1);
+}
+body{background:var(--bg);color:var(--text);font-family:'Courier New','SimHei',monospace;
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;overflow-x:hidden}
+canvas#stars{position:fixed;inset:0;pointer-events:none;z-index:0}
+#app{width:100%;max-width:880px;padding:24px 16px 100px;position:relative;z-index:1}
+
+/* NAV */
+#nav{position:fixed;bottom:0;left:0;right:0;background:rgba(5,9,15,.96);
+  border-top:1px solid var(--border);display:flex;align-items:center;
+  justify-content:space-between;padding:12px 20px;z-index:100;gap:10px}
+.nbtn{background:var(--surface2);color:var(--accent);border:1px solid var(--accent);
+  border-radius:8px;padding:10px 22px;cursor:pointer;font-family:inherit;font-size:14px;
+  transition:all .2s}
+.nbtn:hover{background:var(--accent);color:var(--bg)}
+.nbtn:disabled{opacity:.3;cursor:not-allowed;pointer-events:none}
+#ptext{color:var(--dim);font-size:13px;text-align:center;flex:1}
+#pbar-out{position:fixed;top:0;left:0;right:0;height:3px;background:rgba(255,255,255,.05);z-index:200}
+#pbar-in{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .4s ease}
+
+/* CARDS */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin:8px 0}
+.c-red{background:var(--red-bg);border-color:var(--red)}
+.c-blue{background:var(--blue-bg);border-color:var(--blue)}
+.c-green{background:var(--green-bg);border-color:var(--green)}
+.c-yellow{background:var(--yellow-bg);border-color:var(--yellow)}
+
+/* PLAYERS */
+.prow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:14px 0}
+.player{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 14px;
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;min-width:96px;transition:all .3s}
+.player.sample{border-color:var(--accent2);background:rgba(57,255,20,.07);box-shadow:0 0 18px rgba(57,255,20,.2)}
+.player.obs{border-color:var(--accent)}
+.pav{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px}
+.pname{font-size:13px;font-weight:bold}
+.prole{font-size:11px;color:var(--dim);text-align:center}
+.pbadge{font-size:11px;padding:2px 8px;border-radius:20px}
+.bs{background:var(--accent2);color:#000}.bo{background:var(--accent);color:#000}
+
+/* TRACK */
+.track{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 18px;margin:10px 0}
+.trow{display:flex;justify-content:space-between;font-size:13px;color:var(--dim);margin-bottom:6px}
+.tbar{height:22px;background:var(--surface2);border-radius:11px;overflow:visible;position:relative}
+.tfill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));
+  border-radius:11px;transition:width .8s ease;min-width:0;position:relative}
+.ttarget{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--accent2);border-radius:2px}
+.ttarget::after{content:'目标';position:absolute;top:-20px;left:50%;transform:translateX(-50%);
+  font-size:10px;color:var(--accent2);white-space:nowrap}
+.fdots{display:flex;gap:6px;margin-top:10px}
+.fdot{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);transition:all .3s}
+.fdot.on{background:var(--red);border-color:var(--red)}
+
+/* SCENES */
+.sgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}
+@media(max-width:580px){.sgrid{grid-template-columns:1fr}}
+.scard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center}
+.scard.picked{border-color:var(--accent2);background:rgba(57,255,20,.07);box-shadow:0 0 12px rgba(57,255,20,.15)}
+.slabel{font-size:11px;color:var(--dim);margin-bottom:4px}
+.stitle{font-size:14px;font-weight:bold;margin-bottom:6px}
+.sdesc{font-size:12px;color:var(--dim);line-height:1.5}
+
+/* REVEAL */
+.rrow{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--surface);
+  border-radius:10px;border:1px solid var(--border);margin:6px 0}
+.rrow.ok{border-color:var(--green);background:rgba(61,255,170,.07)}
+.rrow.ng{border-color:rgba(255,68,85,.3)}
+.rplayer{font-weight:bold;min-width:68px}
+.rcard{flex:1;font-size:14px}
+.rresult{font-size:20px}
+
+/* MISC */
+.fdown{background:var(--surface2);border:2px dashed var(--border);color:var(--dim);
+  text-align:center;border-radius:12px;padding:16px}
+.alien{color:var(--dim);font-size:13px;font-style:italic;border-left:2px solid var(--border);
+  padding-left:12px;margin:8px 0;line-height:1.6}
+.info{background:rgba(0,212,255,.05);border:1px solid rgba(0,212,255,.2);border-radius:10px;padding:12px 16px;margin:10px 0;font-size:14px}
+.warn{background:rgba(255,228,77,.05);border:1px solid rgba(255,228,77,.25);border-radius:10px;padding:12px 16px;margin:10px 0;font-size:14px}
+.ach{display:flex;gap:12px;align-items:flex-start;background:rgba(255,228,77,.06);
+  border:1px solid var(--yellow);border-radius:12px;padding:14px 16px;margin:10px 0}
+.aicon{font-size:28px;flex-shrink:0}
+.aname{font-weight:bold;color:var(--yellow)}
+.adesc{font-size:13px;color:var(--dim);margin-top:3px}
+.mbadge{display:inline-block;font-size:13px;font-weight:bold;padding:4px 14px;border-radius:20px;margin-bottom:10px}
+.ma{background:rgba(77,159,255,.15);color:var(--blue);border:1px solid var(--blue)}
+.mb{background:rgba(57,255,20,.1);color:var(--accent2);border:1px solid var(--accent2)}
+.rhead{display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:12px 16px;
+  background:var(--surface);border-radius:10px;border:1px solid var(--border)}
+.rnum{width:40px;height:40px;border-radius:50%;background:var(--accent);color:var(--bg);
+  display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:bold;flex-shrink:0}
+.score-box{text-align:center;padding:20px;background:var(--surface);border:1px solid var(--accent2);border-radius:16px;margin:10px 0}
+.score-n{font-size:52px;color:var(--accent2);font-weight:bold;line-height:1}
+h1{font-size:32px;color:var(--accent);text-align:center;margin-bottom:8px}
+h2{font-size:20px;color:var(--accent2);margin-bottom:12px}
+h3{font-size:15px;color:var(--accent);margin-bottom:8px}
+.dim{color:var(--dim)}
+.hi{color:var(--accent);font-weight:bold}
+.hi2{color:var(--accent2);font-weight:bold}
+.red{color:var(--red)}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes si{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:translateX(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.fu{animation:fadeUp .5s ease both}
+.si1{animation:si .4s ease .0s both}
+.si2{animation:si .4s ease .15s both}
+.si3{animation:si .4s ease .30s both}
+.si4{animation:si .4s ease .45s both}
+.pulse{animation:pulse 2s infinite}
+</style>
+</head>
+<body>
+<canvas id="stars"></canvas>
+<div id="pbar-out"><div id="pbar-in"></div></div>
+<div id="app"><div id="sc"></div></div>
+<div id="nav">
+  <button class="nbtn" id="bp" onclick="go(-1)">← 上一步</button>
+  <div id="ptext"></div>
+  <button class="nbtn" id="bn" onclick="go(1)">下一步 →</button>
+</div>
+
+<script>
+// Stars
+(()=>{
+  const c=document.getElementById('stars'),x=c.getContext('2d');
+  let s=[];
+  const rsz=()=>{c.width=innerWidth;c.height=innerHeight};
+  const init=()=>{s=Array.from({length:180},()=>({x:Math.random()*c.width,y:Math.random()*c.height,r:.4+Math.random()*1.2,f:Math.random()*Math.PI*2}))};
+  const draw=()=>{x.clearRect(0,0,c.width,c.height);const t=Date.now()*.001;
+    s.forEach(p=>{x.beginPath();x.arc(p.x,p.y,p.r,0,Math.PI*2);
+    x.fillStyle=`rgba(180,210,255,${.25+.3*Math.abs(Math.sin(t*.7+p.f))})`;x.fill()});
+    requestAnimationFrame(draw)};
+  rsz();init();draw();addEventListener('resize',()=>{rsz();init()});
+})();
+
+// Helpers
+const P=(em,name,sub,badge)=>`
+  <div class="player ${badge==='s'?'sample':badge==='o'?'obs':''}">
+    <div class="pav">${em}</div>
+    <div class="pname">${name}</div>
+    <div class="prole">${sub}</div>
+    ${badge==='s'?'<span class="pbadge bs">▶ 样本</span>':badge==='o'?'<span class="pbadge bo">👁 观察员</span>':''}
+  </div>`;
+
+const TRACK=(score,fails,maxFail=5)=>{
+  const pct=Math.min(100,(score/20)*100);
+  const tpct=(12/20)*100;
+  const dots=Array.from({length:maxFail},(_,i)=>`<div class="fdot${i<fails?' on':''}"></div>`).join('');
+  return `<div class="track">
+    <div class="trow"><span>理解值</span><span class="hi2">${score} / 12（目标）</span></div>
+    <div class="tbar">
+      <div class="tfill" style="width:${pct}%"></div>
+      <div class="ttarget" style="left:${tpct}%"></div>
+    </div>
+    <div class="trow" style="margin-top:12px"><span>失败计数（无人猜中次数）</span><span class="red">${fails} / ${maxFail}</span></div>
+    <div class="fdots">${dots}</div>
+  </div>`;
+};
+
+const RC=(em,label,cls)=>`<div class="card ${cls}" style="text-align:center;padding:16px 20px;border-radius:14px">
+  <div style="font-size:28px">${em}</div><div style="font-weight:bold;margin-top:4px">${label}</div></div>`;
+
+// Slides
+const slides=[
+
+// 0 — TITLE
+()=>`<div class="fu" style="text-align:center;padding:40px 0 20px">
+  <div style="font-size:12px;color:var(--dim);letter-spacing:3px;margin-bottom:20px">⬡ 外星观察员档案 · 模拟程序 #2401 ⬡</div>
+  <h1 style="font-size:38px;margin-bottom:6px">地球人观察日记</h1>
+  <div style="color:var(--dim);margin-bottom:28px">一款促进家庭理解的合作猜测桌游 · 游戏流程演示</div>
+  <div class="card" style="max-width:520px;margin:0 auto;text-align:left">
+    <div class="alien">本次将模拟一个四人家庭样本（两名成年样本 + 两名幼年样本）的游戏过程，完整体验两种核心玩法模式。</div>
+    <div style="margin-top:14px;font-size:14px;line-height:2">
+      🎯 共 <strong>16 步</strong>，点击「下一步」或按 <kbd style="background:var(--surface2);padding:1px 6px;border-radius:4px">→</kbd> 键推进<br>
+      🏆 目标：理解值达到 <strong class="hi2">12</strong> 即获胜<br>
+      ⚠️ 失败线：「无人猜中」累计 <strong class="red">5 次</strong>（4人局）
+    </div>
+  </div>
+  <div class="prow" style="margin-top:28px">
+    ${P('👨','爸爸','成年样本','')}
+    ${P('👩','妈妈','成年样本','')}
+    ${P('👦','小明','10岁 · 幼年样本','')}
+    ${P('👧','小云','7岁 · 幼年样本','')}
+  </div>
+</div>`,
+
+// 1 — MECHANICS
+()=>`<div class="fu">
+  <h2>核心机制</h2>
+  <div class="info">每一轮，一人当 <strong>「样本」</strong>（被猜的人），其余人当 <strong>「观察员」</strong>。样本秘密做出真实选择，观察员秘密下注，然后同时翻牌。</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0">
+    <div class="card ma" style="border-radius:12px">
+      <div class="mbadge ma" style="margin-bottom:6px">模式甲</div>
+      <strong>家长当样本</strong>
+      <div style="font-size:13px;color:var(--dim);margin-top:6px">翻事件卡 → 家长秘密出反应牌 → 所有人猜家长选了哪种颜色</div>
+    </div>
+    <div class="card mb" style="border-radius:12px">
+      <div class="mbadge mb" style="margin-bottom:6px">模式乙</div>
+      <strong>孩子当样本</strong>
+      <div style="font-size:13px;color:var(--dim);margin-top:6px">翻反应卡定结果 → 孩子从3张场景卡里选1个 → 所有人猜孩子选了哪张</div>
+    </div>
+  </div>
+  <div style="font-size:14px;margin-bottom:8px;color:var(--dim)">四种情绪反应（玩家永久手牌，每人各持4张）：</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    ${RC('🔴','炸毛·对抗','c-red')}
+    ${RC('🔵','讲理·争辩','c-blue')}
+    ${RC('🟢','求抱·示弱','c-green')}
+    ${RC('🟡','躲开·回避','c-yellow')}
+  </div>
+  <div style="margin-top:10px;font-size:13px;color:var(--dim)">手牌规则：每轮打出1张，翻牌后取回，不消耗。</div>
+  ${TRACK(0,0)}
+</div>`,
+
+// 2 — ROUND 1 SETUP
+()=>`<div class="fu">
+  <div class="rhead"><div class="rnum">1</div><div>
+    <div style="font-size:16px;font-weight:bold">第 1 轮</div>
+    <div style="font-size:13px;color:var(--dim)">首轮由最小年龄玩家担任样本，顺时针轮换</div>
+  </div></div>
+  <div class="mbadge mb">模式乙 · 幼年样本</div>
+  <p style="font-size:14px;margin-bottom:14px">小云（7岁）是本轮样本。模式乙中，孩子只需从3张场景卡里选一张——几乎零负担。揣摩的压力全转移给家长。</p>
+  <div class="prow">
+    ${P('👨','爸爸','成年样本','o')}
+    ${P('👩','妈妈','成年样本','o')}
+    ${P('👦','小明','10岁','o')}
+    ${P('👧','小云','7岁','s')}
+  </div>
+  ${TRACK(0,0)}
+</div>`,
+
+// 3 — REACTION CARD FLIP
+()=>`<div class="fu">
+  <div class="rhead"><div class="rnum">1</div><div>
+    <div style="font-size:16px;font-weight:bold">步骤一：抛出反应</div>
+    <div style="font-size:13px;color:var(--dim)">从反应指示卡牌堆随机翻出一张（不可选择）</div>
+  </div></div>
+  <div class="mbadge mb">模式乙</div>
+  <div style="text-align:center;margin:20px 0">
+    <div style="font-size:12px;color:var(--dim);margin-bottom:14px">🔄 随机翻开...</div>
+    <div class="card c-blue fu" style="max-width:300px;margin:0 auto;text-align:center;padding:28px;animation-delay:.3s">
+      <div style="font-size:40px">💧</div>
+      <div style="font-size:18px;font-weight:bold;margin-top:8px">启动眼部排水系统</div>
+      <div style="font-size:14px;color:var(--dim);margin-top:4px">（哭了）</div>
+    </div>
+  </div>
+  <div class="alien si1">外星观测报告：本轮样本将触发液态分泌物溢出事件（俗称：哭）。任务目标为确认导致该生理反应的具体刺激源。</div>
+  <div class="info" style="margin-top:10px">此步骤<strong>不可跳过</strong>——反应由牌堆随机给定，不由任何人选择。</div>
+  ${TRACK(0,0)}
+</div>`,
+
+// 4 — SCENE CARDS SPREAD
+()=>`<div class="fu">
+  <div class="rhead"><div class="rnum">1</div><div>
+    <div style="font-size:16px;font-weight:bold">步骤二：摊开场景</div>
+    <div style="font-size:13px;color:var(--dim)">取出「💧哭了」配套的整组场景卡（固定3张）</div>
+  </div></div>
+  <div class="mbadge mb">模式乙</div>
+  <div class="sgrid">
+    <div class="scard si1">
+      <div class="slabel">场景 A</div>
+      <div class="stitle">🧸 玩具阵亡</div>
+      <div class="sdesc">你最喜欢的那个玩具，被不小心踩到，咔地断成两半，再也拼不回去了。</div>
+    </div>
+    <div class="scard si2">
+      <div class="slabel">场景 B</div>
+      <div class="stitle">🚫 「人满了」</div>
+      <div class="sdesc">你跑过去问「我能跟你们一起玩吗」，他们说「人满了」，然后继续玩，没人再看你。</div>
+    </div>
+    <div class="scard si3">
+      <div class="slabel">场景 C</div>
+      <div class="stitle">⚖️ 背了黑锅</div>
+      <div class="sdesc">明明不是你弄的，大人却指着你说「就是你干的」，你说不是，没有人信你。</div>
+    </div>
+  </div>
+  <div class="warn">⚠️ 场景卡必须<strong>整组使用</strong>——这3张是「哭了」专属配套组，不可跨组混搭。</div>
+  ${TRACK(0,0)}
+</div>`,
+
+// 5 — CHILD PICKS
+()=>`<div class="fu">
+  <div class="rhead"><div class="rnum">1</div><div>
+    <div style="font-size:16px;font-weight:bold">步骤三：样本秘密指认</div>
+    <div style="font-size:13px;color:var(--dim)">小云心里想好选哪张，然后将标记物正面朝下压上去</div>
+  </div></div>
+  <div class="mbadge mb">模式乙</div>
+  <div style="text-align:center;margin-bottom:12px">${P('👧','小云','正在秘密选择…','s')}</div>
+  <div class="sgrid" style="opacity:.55">
+    <div class="scard"><div class="slabel">场景 A</div><div class="stitle">🧸 玩具阵亡</div></div>
+    <div class="scard"><div class="slabel">场景 B</div><div class="stitle">🚫 「人满了」</div></div>
+    <div class="scard"><div class="slabel">场景 C</div><div class="stitle">⚖️ 背了黑锅</div></div>
+  </div>
+  <div class="fdown pulse" style="max-width:300px;margin:14px auto;padding:18px">
+    🔒<br>
+    <span style="font-size:13px">小云的标记物已扣下</span><br>
+    <span style="font-size:11px;color:var(--dim)">其他人现在还不知道她选了哪张</span>
+  </div>
+  <div class="info">孩子只需要「在心里选一个，标记物盖住」—— <strong>几乎零负担</strong>，揣摩压力全给观察员。</div>
+  ${TRACK(0,0)}
+</div>`,
+
+// 6 — OBSERVERS BET (MODE B)
+()=>`<div class="fu">
+  <div class="rhead"><div class="rnum">1</div><div>
+    <div style="font-size:16px;font-weight:bold">步骤四：观察员秘密下注</div>
+    <div style="font-size:13px;color:var(--dim)">爸爸、妈妈、小明 各自独立猜「小云选了哪张」</div>
+  </div></div>
+  <div class="mbadge mb">模式乙</div>
+  <div class="prow" style="align-items:flex-start">
+    <div style="text-align:center">
+      ${P('👨','爸爸','','o')}
+      <div style="font-size:11px;color:var(--dim);margin:4px 0">「应该是<br>玩具坏了…」</div>
+      <div class="fdown" style="max-width:84px;margin:0 auto;padding:10px;font-size:13px">🔒<br><small>押A</small></div>
+    </div>
+    <div style="text-align:center">
+      ${P('👩','妈妈','','o')}
+      <div style="font-size:11px;color:var(--dim);margin:4px 0">「被小朋友<br>排斥了？」</div>
+      <div class="fdown" style="max-width:84px;margin:0 auto;padding:10px;font-size:13px">🔒<br><small>押B</small></div>
+    </div>
+    <div style="text-align:center">
+      ${P('👦','小明','','o')}
+      <div style="font-size:11px;color:var(--dim);margin:4px 0">「她最怕<br>被冤枉了！」</div>
+      <div class="fdown" style="max-width:84px;margin:0 auto;padding:10px;font-size:13px">🔒<br><small>押C</small></div>
+    </div>
+    <div style="text-align:center">
+      ${P('👧','小云','已指认','s')}
+      <div style="font-size:11px;color:var(--dim);margin:4px 0">（等待<br>翻牌）</div>
+    </div>
+  </div>
+  <div class="info">⚠️ 翻牌前不得互相交流或暗示，各自独立判断。</div>
+  ${TRACK(0,0)}
+</div>`,
+
+// 7 — REVEAL B
+()=>`<div class="fu">
+  <div class="rhead"><div class="rnum">1</div><div>
+    <div style="font-size:16px;font-weight:bold">步骤五：同时翻牌！</div>
+    <div style="font-size:13px;color:var(--dim)">所有人同时翻开各自的押注</div>
+  </div></div>
+  <div class="mbadge mb">模式乙</div>
+  <div style="text-align:center;font-size:26px;color:var(--accent2);font-weight:bold;margin:10px 0">✦ 同时翻牌 ✦</div>
+  <div class="card" style="border-color:var(--accent2);margin-bottom:10px">
+    <div style="font-size:13px;color:var(--dim);margin-bottom:8px">小云的真实选择：</div>
+    <div class="scard picked" style="display:inline-block;text-align:left;padding:10px 14px">
+      <div class="slabel">场景 C · ✅ 已选定</div>
+      <div class="stitle">⚖️ 背了黑锅</div>
+      <div class="sdesc">明明不是你弄的，大人却指着你说「就是你干的」，你说不是，没有人信你。</div>
+    </div>
+  </div>
+  <div class="rrow ok si1"><span class="rplayer">👨 爸爸</span><span class="rcard">押注：<strong>🧸 玩具阵亡（A）</strong></span><span class="rresult">❌</span></div>
+  <div class="rrow ng si2"><span class="rplayer">👩 妈妈</span><span class="rcard">押注：<strong>🚫 「人满了」（B）</strong></span><span class="rresult">❌</span></div>
+  <div class="rrow ok si3"><span class="rplayer">👦 小明</span><span class="rcard">押注：<strong>⚖️ 背了黑锅（C）</strong></span><span class="rresult">✅</span></div>
+  <div class="alien si4">外星观察员备注：幼年雄性样本（哥哥）对本样本应激触发源的预判与实际数据一致。两名成年样本存在显著误判——他们以为「物品损坏」或「社交排斥」是触发源，实际触发源是「归因错误」（被冤枉）。</div>
+  ${TRACK(0,0)}
+</div>`,
+
+// 8 — SCORE B
+()=>`<div class="fu">
+  <div class="rhead"><div class="rnum">1</div><div>
+    <div style="font-size:16px;font-weight:bold">结算</div>
+    <div style="font-size:13px;color:var(--dim)">第1轮得分计算</div>
+  </div></div>
+  <div class="score-box">
+    <div style="font-size:13px;color:var(--dim);margin-bottom:6px">本轮理解值变化</div>
+    <div class="score-n">+1</div>
+    <div style="font-size:13px;color:var(--dim);margin-top:10px;line-height:2">
+      ❌ 爸爸未猜中<br>❌ 妈妈未猜中<br>✅ 小明猜中 <strong class="hi2">+1</strong><br>
+      <span style="color:var(--dim)">未全员猜中，无额外奖励</span>
+    </div>
+  </div>
+  ${TRACK(1,0)}
+  <div class="warn" style="margin-top:12px">
+    <strong>💬 翻牌后的理解时刻</strong>
+    <div style="margin-top:8px;font-size:13px;line-height:1.8">
+      爸爸：「原来你因为被冤枉才哭？我以为你是玩具坏了……」<br>
+      小云：「被冤枉比玩具坏了更难受，因为没有人信我。」
+    </div>
+    <div style="margin-top:8px;font-size:13px;color:var(--accent2)">→ 这句话，不需要游戏，平时说不出来。翻牌之后，自然就来了。</div>
+  </div>
+</div>`,
+
+// 9 — ROUND 3 SETUP (MODE A)
+()=>`<div class="fu">
+  <div class="rhead"><div class="rnum">3</div><div>
+    <div style="font-size:16px;font-weight:bold">第 3 轮</div>
+    <div style="font-size:13px;color:var(--dim)">样本标记顺时针：小云 → 小明 → 妈妈</div>
+  </div></div>
+  <div class="mbadge ma">模式甲 · 成年样本</div>
+  <p style="font-size:14px;margin-bottom:14px">妈妈是本轮样本。模式甲中，家长秘密出反应牌，<strong>除样本外的所有人</strong>（包括爸爸）都是观察员。</p>
+  <div class="prow">
+    ${P('👨','爸爸','成年样本','o')}
+    ${P('👩','妈妈','成年样本','s')}
+    ${P('👦','小明','10岁','o')}
+    ${P('👧','小云','7岁','o')}
+  </div>
+  ${TRACK(1,0)}
+</div>`,
+
+// 10 — EVENT CARD
+()=>`<div class="fu">
+  <div class="rhead"><div class="rnum">3</div><div>
+    <div style="font-size:16px;font-weight:bold">步骤一：抛出事件</div>
+    <div style="font-size:13px;color:var(--dim)">翻开事件牌堆顶一张（翻开后、宣读前进入跳过窗口）</div>
+  </div></div>
+  <div class="mbadge ma">模式甲</div>
+  <div class="card c-yellow" style="max-width:500px;margin:14px auto">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <span style="background:var(--yellow);color:#000;font-size:11px;padding:2px 8px;border-radius:4px">🟡 黄 · 中暴露</span>
+      <span style="font-size:12px;color:var(--dim)">事件卡 · 触发对象：妈妈</span>
+    </div>
+    <h3 style="color:var(--yellow);margin-bottom:8px">【精密作业期遭遇噪音轰炸】</h3>
+    <div class="alien">成年样本正盯着发光屏幕处理重要文件，幼年样本在旁以每分钟三次的频率发问：「妈妈你看我画的！」「这个字怎么写？」「你怎么不理我？」声波密集，无间隙。</div>
+    <div style="margin-top:12px;font-size:14px">
+      <strong>问</strong>：你正忙、孩子一直在旁边求关注时，你<strong>真实</strong>的反应是？
+    </div>
+  </div>
+  <div class="info">🟡 黄色卡无需跳过。若翻出 🔴 红色卡，任何玩家（含样本）可在<strong>宣读前</strong>举手声明「本轮跳过」。</div>
+  ${TRACK(1,0)}
+</div>`,
+
+// 11 — PARENT PICKS
+()=>`<div class="fu">
+  <div class="rhead"><div class="rnum">3</div><div>
+    <div style="font-size:16px;font-weight:bold">步骤二：样本秘密出牌</div>
+    <div style="font-size:13px;color:var(--dim)">妈妈从手牌（红蓝绿黄各1张）中选1张，正面朝下扣住</div>
+  </div></div>
+  <div class="mbadge ma">模式甲</div>
+  <div style="text-align:center;margin-bottom:14px">${P('👩','妈妈','正在秘密出牌…','s')}</div>
+  <div style="font-size:13px;color:var(--dim);text-align:center;margin-bottom:8px">妈妈的手牌（四色各1张）：</div>
+  <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:14px">
+    ${RC('🔴','炸毛','c-red')}${RC('🔵','讲理','c-blue')}${RC('🟢','求抱','c-green')}${RC('🟡','躲开','c-yellow')}
+  </div>
+  <div class="fdown pulse" style="max-width:300px;margin:0 auto;padding:18px">
+    🔒<br>
+    <span style="font-size:13px">妈妈已秘密出牌，正面朝下</span><br>
+    <span style="font-size:11px;color:var(--dim)">出牌后不得更改，不得向他人暗示</span>
+  </div>
+  <div class="info" style="margin-top:12px">
+    <strong>坦诚锁</strong>：必须选「真实反应」。如果为了「显得好」而选不符合实际的牌，队友猜不中，集体扣分。
+  </div>
+  ${TRACK(1,0)}
+</div>`,
+
+// 12 — OBSERVERS BET A
+()=>`<div class="fu">
+  <div class="rhead"><div class="rnum">3</div><div>
+    <div style="font-size:16px;font-weight:bold">步骤三：观察员秘密下注</div>
+    <div style="font-size:13px;color:var(--dim)">爸爸、小明、小云 各自猜「妈妈选了哪种颜色」</div>
+  </div></div>
+  <div class="mbadge ma">模式甲</div>
+  <div class="prow" style="align-items:flex-start">
+    <div style="text-align:center">
+      ${P('👨','爸爸','','o')}
+      <div style="font-size:11px;color:var(--dim);margin:4px 0">「妈妈这时<br>候会求抱吧」</div>
+      <div class="fdown" style="max-width:84px;margin:0 auto;padding:8px;font-size:13px">🔒<br><small>押🟢</small></div>
+    </div>
+    <div style="text-align:center">
+      ${P('👩','妈妈','已出牌','s')}
+      <div style="font-size:11px;color:var(--dim);margin:4px 0">（等待<br>翻牌）</div>
+    </div>
+    <div style="text-align:center">
+      ${P('👦','小明','','o')}
+      <div style="font-size:11px;color:var(--dim);margin:4px 0">「妈妈忙被<br>打扰会炸毛」</div>
+      <div class="fdown" style="max-width:84px;margin:0 auto;padding:8px;font-size:13px">🔒<br><small>押🔴</small></div>
+    </div>
+    <div style="text-align:center">
+      ${P('👧','小云','','o')}
+      <div style="font-size:11px;color:var(--dim);margin:4px 0">「妈妈肯定<br>发火！」</div>
+      <div class="fdown" style="max-width:84px;margin:0 auto;padding:8px;font-size:13px">🔒<br><small>押🔴</small></div>
+    </div>
+  </div>
+  ${TRACK(1,0)}
+</div>`,
+
+// 13 — REVEAL A
+()=>`<div class="fu">
+  <div class="rhead"><div class="rnum">3</div><div>
+    <div style="font-size:16px;font-weight:bold">步骤四：同时翻牌！</div>
+  </div></div>
+  <div class="mbadge ma">模式甲</div>
+  <div style="text-align:center;font-size:26px;color:var(--accent);font-weight:bold;margin:10px 0">✦ 同时翻牌 ✦</div>
+  <div class="card c-red" style="margin-bottom:10px">
+    <div style="font-size:13px;color:var(--dim);margin-bottom:8px">妈妈的真实反应：</div>
+    <div style="font-size:20px;font-weight:bold">🔴 炸毛</div>
+    <div style="font-size:13px;color:var(--dim);margin-top:4px">「……被打断会先发火，虽然事后会后悔。」</div>
+  </div>
+  <div class="rrow ng si1"><span class="rplayer">👨 爸爸</span><span class="rcard">押注：<strong>🟢 求抱</strong></span><span class="rresult">❌</span></div>
+  <div class="rrow ok si2"><span class="rplayer">👦 小明</span><span class="rcard">押注：<strong>🔴 炸毛</strong></span><span class="rresult">✅</span></div>
+  <div class="rrow ok si3"><span class="rplayer">👧 小云</span><span class="rcard">押注：<strong>🔴 炸毛</strong></span><span class="rresult">✅</span></div>
+  <div class="alien si4">外星观察员备注：幼年样本们对成年雌性样本的应激模式预判准确。成年雄性样本（爸爸）对配偶在压力情境下的真实反应存在显著误判——将「宣泄型」误判为「求抱型」。</div>
+  ${TRACK(1,0)}
+</div>`,
+
+// 14 — SCORE A + ACHIEVEMENT
+()=>`<div class="fu">
+  <div class="rhead"><div class="rnum">3</div><div>
+    <div style="font-size:16px;font-weight:bold">结算</div>
+  </div></div>
+  <div class="score-box">
+    <div style="font-size:13px;color:var(--dim);margin-bottom:6px">本轮理解值变化</div>
+    <div class="score-n">+2</div>
+    <div style="font-size:13px;color:var(--dim);margin-top:10px;line-height:2">
+      ❌ 爸爸未猜中（押🟢求抱）<br>
+      ✅ 小明猜中 <strong class="hi2">+1</strong><br>
+      ✅ 小云猜中 <strong class="hi2">+1</strong><br>
+      <span>未全员猜中，无额外奖励</span>
+    </div>
+  </div>
+  ${TRACK(3,0)}
+  <div class="ach">
+    <div class="aicon">🏅</div>
+    <div>
+      <div class="aname">成就解锁：真香</div>
+      <div class="adesc">爸爸说：「原来你被打扰是发火？我以为你是想让我来帮你……」</div>
+      <div style="font-size:12px;color:var(--dim);margin-top:4px">外星吐槽：「观测者世界观发生不可逆更新。」</div>
+    </div>
+  </div>
+  <div class="warn">
+    <strong>💬 这一翻牌，发现了什么</strong>
+    <div style="font-size:13px;line-height:1.8;margin-top:8px">
+      爸爸十年来以为：妈妈忙被打扰时，会想要倾诉和安慰。<br>
+      事实是：妈妈那一刻的第一反应是发火，然后才是后悔。<br>
+      <span style="color:var(--accent2)">→ 翻牌用了1秒，这个认知差存在了十年。</span>
+    </div>
+  </div>
+  <div class="info" style="margin-top:8px;font-size:13px">
+    💡 <strong>全员猜中奖励</strong>：如果小明、小云、爸爸三人都猜中了🔴，本轮额外 <strong class="hi2">+1</strong>（心意相通），共得 <strong>+4</strong>。
+  </div>
+</div>`,
+
+// 15 — SUMMARY
+()=>`<div class="fu">
+  <h2 style="text-align:center">演示结束</h2>
+  <div style="text-align:center;color:var(--dim);margin-bottom:16px">第3轮结束后的游戏状态</div>
+  ${TRACK(3,0)}
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:14px 0">
+    <div class="card" style="text-align:center">
+      <div style="font-size:12px;color:var(--dim)">当前理解值</div>
+      <div style="font-size:38px;color:var(--accent2);font-weight:bold">3</div>
+      <div style="font-size:12px;color:var(--dim)">目标 12</div>
+    </div>
+    <div class="card" style="text-align:center">
+      <div style="font-size:12px;color:var(--dim)">剩余轮次</div>
+      <div style="font-size:38px;color:var(--accent);font-weight:bold">5</div>
+      <div style="font-size:12px;color:var(--dim)">共8轮</div>
+    </div>
+    <div class="card" style="text-align:center">
+      <div style="font-size:12px;color:var(--dim)">失败计数</div>
+      <div style="font-size:38px;color:var(--green);font-weight:bold">0</div>
+      <div style="font-size:12px;color:var(--dim)">上限 5</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>本局成就</h3>
+    <div class="ach" style="margin:6px 0"><div class="aicon">🏅</div><div><div class="aname">真香</div><div class="adesc">爸爸：「原来你是这么想的」</div></div></div>
+  </div>
+  <div class="card" style="margin-top:10px">
+    <h3>胜负条件</h3>
+    <div style="font-size:14px;line-height:2.2">
+      🏆 <span class="hi2">胜利</span>：理解值 ≥ 12（任意时刻即时触发）<br>
+      💀 <span class="red">失败</span>：「无人猜中」累计 5 次（4人局）<br>
+      🤝 <span class="dim">平局</span>：8轮结束按最终理解值评定 C / B / A 级
+    </div>
+  </div>
+  <div class="info" style="margin-top:12px;text-align:center">
+    <div style="font-size:15px;font-weight:bold;margin-bottom:6px">这就是《地球人观察日记》</div>
+    <div style="font-size:13px;color:var(--dim);line-height:1.8">
+      玩游戏的过程本身就是在理解彼此。<br>
+      猜得准，说明你懂他。猜不中，说明有话还没说过。
+    </div>
+    <div style="margin-top:14px;font-size:12px;color:var(--dim)">⬡ 外星观察员档案 #2401 · 本次模拟结束 ⬡</div>
+  </div>
+</div>`,
+
+];
+
+// Navigation
+let cur=0;
+const total=slides.length;
+
+function render(){
+  document.getElementById('sc').innerHTML=slides[cur]();
+  document.getElementById('pbar-in').style.width=((cur+1)/total*100)+'%';
+  document.getElementById('ptext').textContent=`步骤 ${cur+1} / ${total}`;
+  document.getElementById('bp').disabled=cur===0;
+  document.getElementById('bn').textContent=cur===total-1?'✓ 演示结束':'下一步 →';
+  document.getElementById('bn').disabled=cur===total-1;
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function go(d){
+  const n=cur+d;
+  if(n>=0&&n<total){cur=n;render();}
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();go(1);}
+  else if(e.key==='ArrowLeft'){e.preventDefault();go(-1);}
+});
+
+render();
+</script>
+</body>
+</html>
