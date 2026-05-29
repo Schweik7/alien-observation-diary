@@ -4,11 +4,16 @@ import { loadCards } from './data/parseCsv'
 import GameCard from './components/GameCard'
 import FilterBar from './components/FilterBar'
 
-// 完整 120 张 CSV 接入点：把 CSV 拷到 public/ 目录，并把文件名填进这里。
-// 详见 README。加载失败时自动回退到内置示例卡，应用始终能跑。
-const CSV_URL = `${import.meta.env.BASE_URL}cards.csv`
+// 可切换的牌库。每套 CSV 放在 public/ 下，结构相同（8 列）。
+// 加载失败时自动回退到内置示例卡，应用始终能跑。
+const DECKS = [
+  { key: 'highgrade', label: '高年级版（9–12岁）', file: 'highgrade.csv' },
+  { key: 'lowgrade', label: '低年级版（6–8岁）', file: 'lowgrade.csv' },
+  { key: 'couples', label: '夫妻版（成人）', file: 'couples.csv' }
+]
 
 export default function App() {
+  const [deckKey, setDeckKey] = useState(DECKS[0].key)
   const [cards, setCards] = useState(sampleCards)
   const [source, setSource] = useState('sample')
   const [typeFilter, setTypeFilter] = useState('全部')
@@ -16,15 +21,21 @@ export default function App() {
 
   useEffect(() => {
     let alive = true
-    loadCards(CSV_URL, sampleCards).then((res) => {
+    const deck = DECKS.find((d) => d.key === deckKey) || DECKS[0]
+    const url = `${import.meta.env.BASE_URL}${deck.file}`
+    setSource('loading')
+    loadCards(url, sampleCards).then((res) => {
       if (!alive) return
       setCards(res.cards)
       setSource(res.source)
+      // 切换牌库后重置筛选，避免出现"空结果"
+      setTypeFilter('全部')
+      setExpFilter('全部')
     })
     return () => {
       alive = false
     }
-  }, [])
+  }, [deckKey])
 
   const counts = useMemo(() => {
     const byType = {}
@@ -55,9 +66,27 @@ export default function App() {
             三国杀风格卡牌画廊 · 事件卡 / 反应卡 / 场景卡
           </p>
           <div className="hero__meta">
+            <label className="deck-switch">
+              <span className="deck-switch__label">牌库</span>
+              <select
+                className="deck-switch__select"
+                value={deckKey}
+                onChange={(e) => setDeckKey(e.target.value)}
+              >
+                {DECKS.map((d) => (
+                  <option key={d.key} value={d.key}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <span className="hero__pill">共 {cards.length} 张</span>
             <span className={`hero__pill hero__pill--${source}`}>
-              {source === 'csv' ? '数据源：外部 CSV' : '数据源：内置示例（未检测到 CSV）'}
+              {source === 'csv'
+                ? '数据源：外部 CSV'
+                : source === 'loading'
+                ? '加载中…'
+                : '数据源：内置示例（未检测到 CSV）'}
             </span>
           </div>
         </div>
