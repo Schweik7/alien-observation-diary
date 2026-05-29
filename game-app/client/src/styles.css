@@ -405,8 +405,56 @@ button { font-family: inherit; }
 .result__note { color: var(--ink-dim); font-size: 14px; line-height: 1.8; margin-bottom: 18px; }
 .result__note b { color: var(--ink); }
 
+/* ===== 表/里两层 · 一句话 · 翻牌 · 日记（v0.2） ===== */
+.psection { margin: 14px 0 4px; }
+.psection__head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.psection__step { font-family: var(--mono); font-size: 13px; color: var(--accent, #8fd0c8); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
+.psection__title { font-size: 15px; font-weight: 600; }
+.psection__hint { font-size: 12px; color: var(--ink-dim); }
+
+.options--needs { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.opt--static { cursor: default; }
+
+.saybox { margin: 14px 0 4px; }
+.saybox__label { display: block; font-size: 14px; margin-bottom: 6px; }
+.saybox__req { color: #e6a23c; font-size: 12px; margin-left: 4px; }
+.saybox__input { width: 100%; box-sizing: border-box; resize: vertical; background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 10px; color: var(--ink); padding: 10px 12px; font-size: 14px; line-height: 1.6; font-family: inherit; }
+.saybox__input:focus { outline: none; border-color: var(--accent, #8fd0c8); }
+.saybox__count { text-align: right; font-size: 11px; color: var(--ink-dim); margin-top: 2px; }
+
+.layers { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; margin: 10px 0; }
+.layer { padding: 4px 10px; border-radius: 999px; font-size: 14px; border: 1px solid var(--line); }
+.layer--surface { background: rgba(255,255,255,0.05); color: var(--ink-dim); }
+.layer--inner { background: rgba(143,208,200,0.12); border-color: rgba(143,208,200,0.4); }
+.layer__arrow { color: var(--ink-dim); }
+.layer__gap { font-size: 12px; color: #ffb454; border: 1px solid rgba(255,180,84,0.5); border-radius: 999px; padding: 2px 8px; }
+.layers--gap .layer--inner { box-shadow: 0 0 0 2px rgba(255,180,84,0.25); }
+
+.saidlist { margin: 14px 0; border-top: 1px solid var(--line); padding-top: 10px; }
+.saidlist__head { font-size: 13px; color: var(--ink-dim); margin-bottom: 8px; }
+.said { display: flex; gap: 8px; padding: 6px 0; font-size: 14px; line-height: 1.6; flex-wrap: wrap; }
+.said__who { color: var(--ink-dim); white-space: nowrap; }
+.said--sample .said__who { color: var(--accent, #8fd0c8); }
+.said__text { flex: 1; min-width: 180px; }
+
+.diary { margin: 18px 0; text-align: left; border-top: 1px solid var(--line); padding-top: 14px; }
+.diary__head { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.diary__intro { font-size: 13px; color: var(--ink-dim); margin-bottom: 12px; line-height: 1.7; }
+.diaryrow { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: rgba(255,255,255,0.02); }
+.diaryrow--gap { border-color: rgba(255,180,84,0.4); background: rgba(255,180,84,0.06); }
+.diaryrow__top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.diaryrow__no { width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,0.08); display: grid; place-items: center; font-family: var(--mono); font-size: 11px; }
+.diaryrow__title { font-weight: 600; font-size: 14px; flex: 1; }
+.diaryrow__gap { font-size: 11px; color: #ffb454; border: 1px solid rgba(255,180,84,0.5); border-radius: 999px; padding: 1px 7px; }
+.diaryrow__hit { font-size: 11px; padding: 1px 7px; border-radius: 999px; }
+.diaryrow__hit.is-hit { color: #76d7a0; border: 1px solid rgba(118,215,160,0.5); }
+.diaryrow__hit.is-miss { color: var(--ink-dim); border: 1px solid var(--line); }
+.diaryrow__layers { font-size: 13px; color: var(--ink); }
+.diaryrow__say { font-size: 13px; color: var(--ink-dim); margin-top: 4px; font-style: italic; }
+
 @media (max-width: 480px) {
   .home__title { font-size: 24px; }
   .stage__name { font-size: 19px; }
   .score { flex-wrap: wrap; }
+  .options--needs { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
 }

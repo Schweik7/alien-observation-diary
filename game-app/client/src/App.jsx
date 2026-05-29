@@ -53,9 +53,9 @@ export default function App() {
     }
   }
 
-  function submit(choice) {
-    setMyPick(choice)
-    emit('submitPick', { choice })
+  function submit(pick) {
+    setMyPick(pick)
+    emit('submitPick', pick)
   }
 
   function leave() {

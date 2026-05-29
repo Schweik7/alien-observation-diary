@@ -90,9 +90,9 @@ io.on('connection', (socket) => {
     })
   )
 
-  socket.on('submitPick', ({ choice }) =>
+  socket.on('submitPick', (pick) =>
     withRoom((room) => {
-      gm.submitPick(room, socket.id, choice)
+      gm.submitPick(room, socket.id, pick || {})
       broadcast(room.id)
     })
   )

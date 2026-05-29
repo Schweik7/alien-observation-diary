@@ -58,6 +58,31 @@ export default function GameOver({ state, isHost, onRestart }) {
             ))}
         </div>
 
+        {Array.isArray(state.diary) && state.diary.length > 0 && (
+          <div className="diary">
+            <div className="diary__head">📓 本局观察日记</div>
+            <p className="diary__intro">这一局你们翻出来的样子——尤其是「表里不一」那几条，最值得回头聊。</p>
+            {state.diary.map((d, i) => (
+              <div key={i} className={`diaryrow ${d.gap ? 'diaryrow--gap' : ''}`}>
+                <div className="diaryrow__top">
+                  <span className="diaryrow__no">{d.round}</span>
+                  <span className="diaryrow__title">{d.title}</span>
+                  {d.gap && <span className="diaryrow__gap">表里不一</span>}
+                  <span className={`diaryrow__hit ${d.guessed ? 'is-hit' : 'is-miss'}`}>
+                    {d.guessed ? '被猜中' : '没猜中'}
+                  </span>
+                </div>
+                <div className="diaryrow__layers">
+                  <b>{d.sampleName}</b>
+                  {d.surface ? ` 表面 ${d.surface} ⟶ ` : ' '}
+                  心里 {d.inner}
+                </div>
+                {d.sentence && <div className="diaryrow__say">「{d.sentence}」</div>}
+              </div>
+            ))}
+          </div>
+        )}
+
         <p className="result__note">
           真正的胜利，是你们把今晚翻出来的那几件事，<b>真的聊了一次</b>。
         </p>

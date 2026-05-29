@@ -1,12 +1,33 @@
 import { getDeck } from './decks.js'
 
-// 四色反应（玩法A的选项）
+// 四色反应（玩法A的「表层」——表现出来的行为）
 export const COLORS = [
   { key: '红', name: '炸毛', emoji: '🔴', desc: '对抗、宣泄' },
   { key: '蓝', name: '讲理', emoji: '🔵', desc: '逻辑、争辩' },
   { key: '绿', name: '求抱', emoji: '🟢', desc: '示弱、共情' },
   { key: '黄', name: '躲开', emoji: '🟡', desc: '回避、转移' }
 ]
+
+// 夫妻版「里层」——心里真正的需要/感受（玩法A·成人牌库用，从夫妻版题卡归纳）
+export const NEEDS = [
+  { key: 'care', emoji: '🫂', name: '想被在乎', desc: '被放在心上、被珍视' },
+  { key: 'approve', emoji: '👏', name: '想被认可', desc: '我的付出和价值被看见、被肯定' },
+  { key: 'under', emoji: '🫶', name: '想被理解', desc: '先懂我的感受，别急着评判或讲道理' },
+  { key: 'space', emoji: '🚪', name: '想要空间', desc: '让我喘口气、别逼太紧、给点边界' },
+  { key: 'fear', emoji: '😨', name: '怕失去你', desc: '怕你不要我了、关系上的不安' },
+  { key: 'unfair', emoji: '⚖️', name: '觉得不公平', desc: '我付出更多或被冤枉，心里憋屈' },
+  { key: 'guilt', emoji: '🙇', name: '我有点愧疚', desc: '知道自己做得不够，只是没说出口' },
+  { key: 'tired', emoji: '🫠', name: '我就是累了', desc: '耗竭，没别的意思，别多想' },
+  { key: 'lost', emoji: '😟', name: '我也慌', desc: '怕做错、不知道怎么办才好' },
+  { key: 'close', emoji: '💗', name: '想更亲近你', desc: '想被你想要、想靠近你' },
+  { key: 'middle', emoji: '😣', name: '夹在中间', desc: '在父母和你之间为难' },
+  { key: 'warm', emoji: '🤍', name: '其实心里是暖的', desc: '底下是爱、是感激、是想靠近你' }
+]
+
+// 里层选项：成人牌库用「需要/感受」，孩子牌库沿用四色（第一类）
+function innerSetFor(deckKey) {
+  return deckKey === 'couples' ? NEEDS : COLORS
+}
 
 const ROUND_OPTIONS = [6, 8, 10, 12]
 
@@ -54,10 +75,11 @@ export class GameManager {
       sampleCursor: -1,
       sampleId: null,
       current: null,
-      picks: new Map(), // socketId -> choice
+      picks: new Map(), // socketId -> { surface?, inner?, scene?, sentence }
       reveal: null,
       pendingEnd: null,
       result: null,
+      diary: [], // 本局「观察日记」：每轮的表里与那句话
       log: []
     }
     this.rooms.set(id, room)
@@ -132,6 +154,7 @@ export class GameManager {
     room.sampleCursor = -1
     room.pendingEnd = null
     room.result = null
+    room.diary = []
     room.log = []
     const deck = getDeck(room.deckKey)
     room.items = shuffle(deck.items)
@@ -187,17 +210,27 @@ export class GameManager {
     room.picks = new Map()
   }
 
-  submitPick(room, socketId, choice) {
+  submitPick(room, socketId, pick = {}) {
     if (room.phase !== 'select') return
     const p = room.players.get(socketId)
     if (!p || !p.connected) return
-    // 校验合法性
+    const isSample = room.sampleId === socketId
+    const innerSet = innerSetFor(room.deckKey)
+    const clean = { sentence: (pick.sentence || '').toString().trim().slice(0, 140) }
     if (room.current.kind === 'A') {
-      if (!COLORS.some((c) => c.key === choice)) return
+      // 里层：所有人都要给（样本=真实里层，观察员=猜测的里层）
+      if (!innerSet.some((c) => c.key === pick.inner)) return
+      clean.inner = pick.inner
+      if (isSample) {
+        // 样本还要给「表层」行为反应（四色）
+        if (!COLORS.some((c) => c.key === pick.surface)) return
+        clean.surface = pick.surface
+      }
     } else {
-      if (!room.current.scenes.some((s) => s.id === choice)) return
+      if (!room.current.scenes.some((s) => s.id === pick.scene)) return
+      clean.scene = pick.scene
     }
-    room.picks.set(socketId, choice)
+    room.picks.set(socketId, clean)
     this.maybeReveal(room)
   }
 
@@ -209,9 +242,17 @@ export class GameManager {
 
   doReveal(room) {
     const conn = this.connectedPlayers(room)
-    const truth = room.picks.get(room.sampleId)
+    const isA = room.current.kind === 'A'
+    const samplePick = room.picks.get(room.sampleId) || {}
+    // 玩法A猜「里层」，玩法B猜「场景」
+    const truth = isA ? samplePick.inner : samplePick.scene
     const observers = conn.filter((p) => p.id !== room.sampleId)
-    const correctIds = observers.filter((p) => room.picks.get(p.id) === truth).map((p) => p.id)
+    const correctIds = observers
+      .filter((p) => {
+        const pk = room.picks.get(p.id) || {}
+        return (isA ? pk.inner : pk.scene) === truth
+      })
+      .map((p) => p.id)
 
     let delta = 0
     let allCorrect = false
@@ -236,8 +277,31 @@ export class GameManager {
     const picks = {}
     for (const [id, c] of room.picks) picks[id] = c
 
+    const innerSet = innerSetFor(room.deckKey)
+    const labelInner = (k) => {
+      const c = innerSet.find((x) => x.key === k)
+      return c ? `${c.emoji} ${c.name}` : k || '—'
+    }
+    const labelColor = (k) => {
+      const c = COLORS.find((x) => x.key === k)
+      return c ? `${c.emoji} ${c.name}` : k || '—'
+    }
+    const labelScene = (id) => {
+      const s = (room.current.scenes || []).find((x) => x.id === id)
+      return s ? s.name : id || '—'
+    }
+    const sampleName = room.players.get(room.sampleId)?.nickname || '样本'
+    const surfaceLabel = isA && samplePick.surface ? labelColor(samplePick.surface) : null
+    const innerLabel = isA ? labelInner(truth) : labelScene(truth)
+    const gap = !!(isA && samplePick.surface && samplePick.surface !== samplePick.inner)
+
     room.reveal = {
+      kind: isA ? 'A' : 'B',
       truth,
+      surfaceLabel,
+      innerLabel,
+      gap,
+      sampleSentence: samplePick.sentence || '',
       picks,
       correctIds,
       delta,
@@ -246,7 +310,19 @@ export class GameManager {
       curiosity:
         '翻牌后第一句话，先好奇、别辩解：「原来你会这样？能说说为什么吗？」'
     }
-    const sampleName = room.players.get(room.sampleId)?.nickname || '样本'
+
+    // 记入本局「观察日记」
+    room.diary.push({
+      round: room.round,
+      title: isA ? room.current.name : room.current.reactionName,
+      prompt: isA ? room.current.question : room.current.reactionDesc,
+      sampleName,
+      surface: surfaceLabel,
+      inner: innerLabel,
+      gap,
+      sentence: samplePick.sentence || '',
+      guessed: correctIds.length > 0
+    })
     if (noneCorrect) this.log(room, `第 ${room.round} 轮：没人猜中「${sampleName}」，理解值 −1`)
     else if (allCorrect) this.log(room, `第 ${room.round} 轮：全员猜中「${sampleName}」！理解值 +${delta}`)
     else this.log(room, `第 ${room.round} 轮：${correctIds.length} 人猜中「${sampleName}」，理解值 +${delta}`)
@@ -329,6 +405,8 @@ export class GameManager {
       failCap: room.failCap,
       sampleId: room.sampleId,
       colors: COLORS,
+      innerSet: innerSetFor(room.deckKey),
+      innerKind: room.deckKey === 'couples' ? 'needs' : 'colors',
       roundOptions: ROUND_OPTIONS,
       players: room.order
         .map((id) => room.players.get(id))
@@ -349,6 +427,7 @@ export class GameManager {
       reveal: room.phase === 'reveal' ? room.reveal : null,
       pendingEnd: room.pendingEnd,
       result: room.result,
+      diary: room.phase === 'gameover' ? room.diary : null,
       log: room.log.slice(0, 12),
       connectedCount: conn.length
     }
