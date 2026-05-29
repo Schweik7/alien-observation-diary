@@ -20,18 +20,18 @@ pnpm install
 ```bash
 pnpm dev
 # 前端 http://localhost:5174 （在浏览器打开这个）
-# 后端 socket 服务 http://localhost:3001
+# 后端 socket 服务 http://localhost:4001
 ```
 
 **生产/局域网模式**（一个端口同时托管前端和后端）：
 ```bash
 pnpm build      # 构建前端到 ../dist
-pnpm start      # 访问 http://localhost:3001
+pnpm start      # 访问 http://localhost:4001
 ```
 
 ## 怎么和别人一起玩
-- 同一台机器 / 局域网：让别人访问 `http://<你的IP>:3001`（先 `pnpm build && pnpm start`），或开发模式下访问 `http://<你的IP>:5174`。
-- 公网邀请：用 `ngrok http 3001`（或 cloudflared）把本机端口暴露成公网链接，把链接发给对方即可。
+- 同一台机器 / 局域网：让别人访问 `http://<你的IP>:4001`（先 `pnpm build && pnpm start`），或开发模式下访问 `http://<你的IP>:5174`。
+- 公网邀请：用 `ngrok http 4001`（或 cloudflared）把本机端口暴露成公网链接，把链接发给对方即可。
 - 进入后选好代号 → 创建房间 → 顶部「复制邀请链接」发给对方；对方打开链接会自动填好房间号。
 
 ## 玩法说明

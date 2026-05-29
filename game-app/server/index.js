@@ -8,7 +8,7 @@ import { GameManager } from './game.js'
 import { DECK_LIST } from './decks.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT || 4001
 
 const app = express()
 const httpServer = createServer(app)
@@ -143,5 +143,6 @@ io.on('connection', (socket) => {
 
 httpServer.listen(PORT, () => {
   console.log(`\n  地球人观察日记 · 在线版服务已启动`)
-  console.log(`  http://localhost:${PORT}  (生产) / vite http://localhost:5174 (开发)\n`)
+  console.log(`  http://localhost:${PORT}  (生产) / vite http://localhost:5174 (开发)`)
+  console.log(`  注意：端口可用 PORT 环境变量覆盖（默认 4001，避开微信占用的 3001）\n`)
 })
