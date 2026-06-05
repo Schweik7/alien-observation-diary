@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { GameManager, ACHIEVEMENTS } from './game.js'
 import { DECK_LIST } from './decks.js'
+import { generateCustomDeck, CUSTOM_MODELS, FAMILY_TEMPLATE } from './custom.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 4001
@@ -19,6 +20,27 @@ const io = new Server(httpServer, {
 const gm = new GameManager()
 // 记录每个 socket 当前所在房间
 const socketRoom = new Map()
+
+app.set('trust proxy', true)
+app.use(express.json({ limit: '64kb' }))
+
+// 定制题库：返回可选模型 + 家庭情况模板
+app.get('/api/custom-meta', (req, res) => {
+  res.json({ models: CUSTOM_MODELS.map(({ key, label }) => ({ key, label })), template: FAMILY_TEMPLATE })
+})
+
+// 定制题库：调用 DeepSeek 生成专属牌库
+app.post('/api/custom-deck', async (req, res) => {
+  const ip = (req.headers['x-forwarded-for']?.split(',')[0] || req.ip || '').trim()
+  try {
+    const { family, modelKey, nickname, gender } = req.body || {}
+    const out = await generateCustomDeck({ family, modelKey, nickname, gender, ip })
+    res.json({ ok: true, ...out })
+  } catch (e) {
+    console.warn('[custom-deck] 失败:', e.message)
+    res.status(400).json({ ok: false, error: e.message || '生成失败' })
+  }
+})
 
 // 生产环境：托管已构建的前端
 const distDir = join(__dirname, '..', 'dist')

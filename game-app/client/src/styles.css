@@ -534,3 +534,16 @@ button { font-family: inherit; }
 .achcard__desc { font-size: 12px; opacity: 0.75; margin-top: 2px; }
 .achcard__holders { font-size: 12px; color: #ffce6b; margin-top: 4px; }
 .achcard__lock { position: absolute; top: 8px; right: 10px; opacity: 0.5; }
+
+/* ===== 定制题库 ===== */
+.deck-opt--custom { border-style: dashed; opacity: 0.92; }
+.custom-note {
+  margin: 10px 0 4px; padding: 10px 12px;
+  background: rgba(80, 200, 140, 0.12);
+  border: 1px solid rgba(80, 200, 140, 0.4);
+  border-radius: 10px; font-size: 13px; line-height: 1.5;
+}
+.custom-ta {
+  width: 100%; resize: vertical; min-height: 160px;
+  font-family: inherit; line-height: 1.6; margin-bottom: 8px;
+}

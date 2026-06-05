@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { emit } from '../net.js'
 import { NICKNAMES_MALE, NICKNAMES_FEMALE, randomNickname } from '../nicknames.js'
 import AchievementsModal from './Achievements.jsx'
+import CustomDeck from './CustomDeck.jsx'
 
 export default function Home({ decks, achievements, connected, onEnter }) {
   const [gender, setGender] = useState('male')
@@ -12,6 +13,9 @@ export default function Home({ decks, achievements, connected, onEnter }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [showAch, setShowAch] = useState(false)
+  const [showCustom, setShowCustom] = useState(false)
+  const [customDecks, setCustomDecks] = useState([])
+  const [customNote, setCustomNote] = useState('')
 
   // 从邀请链接 ?room=XXXX 预填
   useEffect(() => {
@@ -27,6 +31,15 @@ export default function Home({ decks, achievements, connected, onEnter }) {
     setNickname(name)
     setGender(g)
   }
+
+  function onCustomCreated({ key, label, count }) {
+    setCustomDecks((list) => [...list.filter((d) => d.key !== key), { key, label }])
+    setDeckKey(key)
+    setShowCustom(false)
+    setCustomNote(`已生成「${label}」（${count} 题），已为你选中，点下方创建观测室即可开玩。`)
+  }
+
+  const allDecks = [...(decks.length ? decks : [{ key: 'highgrade', label: '高年级版' }]), ...customDecks]
 
   function create() {
     if (!connected) return setError('正在连接服务器，请稍候…')
@@ -138,7 +151,7 @@ export default function Home({ decks, achievements, connected, onEnter }) {
           <section className="block">
             <div className="block__label">选择牌库</div>
             <div className="deck-pick">
-              {(decks.length ? decks : [{ key: 'highgrade', label: '高年级版' }]).map((d) => (
+              {allDecks.map((d) => (
                 <button
                   key={d.key}
                   className={`deck-opt ${deckKey === d.key ? 'deck-opt--active' : ''}`}
@@ -147,7 +160,11 @@ export default function Home({ decks, achievements, connected, onEnter }) {
                   {d.label}
                 </button>
               ))}
+              <button className="deck-opt deck-opt--custom" onClick={() => setShowCustom(true)}>
+                🎨 定制专属题库…
+              </button>
             </div>
+            {customNote && <div className="custom-note">{customNote}</div>}
             <button className="btn btn--primary btn--block" disabled={busy} onClick={create}>
               创建观测室 →
             </button>
@@ -179,6 +196,14 @@ export default function Home({ decks, achievements, connected, onEnter }) {
 
       {showAch && (
         <AchievementsModal catalog={achievements} earned={[]} onClose={() => setShowAch(false)} />
+      )}
+      {showCustom && (
+        <CustomDeck
+          nickname={nickname}
+          gender={gender}
+          onCreated={onCustomCreated}
+          onClose={() => setShowCustom(false)}
+        />
       )}
     </div>
   )

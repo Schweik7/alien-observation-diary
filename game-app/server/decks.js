@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -164,7 +164,31 @@ for (const def of DECK_DEFS) {
   }
 }
 
+// 重启时加载之前生成的定制牌库（data/custom-decks/*.csv），让旧 deckKey 仍可用
+const CUSTOM_DIR = join(__dirname, 'data', 'custom-decks')
+if (existsSync(CUSTOM_DIR)) {
+  for (const f of readdirSync(CUSTOM_DIR).filter((n) => n.endsWith('.csv'))) {
+    const key = f.replace(/\.csv$/, '')
+    try {
+      registerDeck({ key, label: `定制版 · ${key.slice(4, 8)}`, csv: readFileSync(join(CUSTOM_DIR, f), 'utf8') })
+    } catch (e) {
+      console.warn(`[decks] 加载定制牌库 ${f} 失败:`, e.message)
+    }
+  }
+}
+
 export const DECK_LIST = DECK_DEFS.map((d) => ({ key: d.key, label: d.label }))
 export function getDeck(key) {
   return decks[key] || decks.highgrade
+}
+
+// 运行时注册一副牌（用于 DeepSeek 生成的定制题库）。传入已经是 CSV 文本。
+export function registerDeck({ key, label, csv }) {
+  const cards = parseCsv(csv)
+  const items = buildPlayable(cards)
+  decks[key] = { key, label, file: null, custom: true, cards, items }
+  const a = items.filter((i) => i.kind === 'A').length
+  const b = items.filter((i) => i.kind === 'B').length
+  console.log(`[decks] 注册定制牌库 ${label}(${key}): ${cards.length} 张卡 -> 玩法A ${a} / 玩法B ${b}`)
+  return decks[key]
 }
