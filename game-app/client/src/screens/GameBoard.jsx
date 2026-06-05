@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 const EXP_LABEL = { 绿: '低暴露', 黄: '真实小事', 红: '掏心窝 · 可跳过' }
 
-export default function GameBoard({ state, youId, onSubmit, onUnlock, onSkip, onNext }) {
+export default function GameBoard({ state, youId, onSubmit, onUnlock, onSkip, onObjection, onNext }) {
   const cur = state.current
   const me = state.players.find((p) => p.id === youId)
   const isSample = state.sampleId === youId
@@ -14,28 +14,50 @@ export default function GameBoard({ state, youId, onSubmit, onUnlock, onSkip, on
   // 本地选择
   const [surface, setSurface] = useState(null) // 表层（四色，仅样本·玩法A）
   const [inner, setInner] = useState(null) // 里层（玩法A）或留空
+  const [innerObj, setInnerObj] = useState(null) // 动词短语反应的对象（you/me）
   const [scene, setScene] = useState(null) // 场景（玩法B）
   const [sentence, setSentence] = useState('')
 
   useEffect(() => {
     setSurface(null)
     setInner(null)
+    setInnerObj(null)
     setScene(null)
     setSentence('')
   }, [cur?.id, state.phase, state.round])
 
   if (!cur) return null
 
+  const innerSet = state.innerSet || state.colors
   const surfaceOpts = state.colors.map((c) => ({ id: c.key, title: `${c.emoji} ${c.name}`, sub: c.desc }))
-  const innerOpts = (state.innerSet || state.colors).map((c) => ({ id: c.key, title: `${c.emoji} ${c.name}`, sub: c.desc }))
+  const innerOpts = innerSet.map((c) => ({
+    id: c.key,
+    title: `${c.emoji} ${c.obj && c.tpl ? c.tpl.replace('{}', '＿') : c.name}`,
+    sub: c.desc,
+    obj: !!c.obj
+  }))
   const sceneOpts = (cur.scenes || []).map((s) => ({ id: s.id, title: s.name, sub: s.description, exposure: s.exposure }))
 
+  const innerNeed = innerSet.find((c) => c.key === inner)
+  const needsObj = !!innerNeed?.obj
+  // 选了动词短语反应后，必须再选对象（你/我）
+  const innerReady = !!inner && (!needsObj || !!innerObj)
+
+  // 选择某反应：换到非动词短语时清掉对象
+  function pickInner(id) {
+    setInner(id)
+    const need = innerSet.find((c) => c.key === id)
+    if (!need?.obj) setInnerObj(null)
+  }
+
   // 锁定条件：一句话不再是必填项（可计入成就但不强制）
-  const canLock = isA ? (isSample ? !!(surface && inner) : !!inner) : !!scene
+  const canLock = isA ? (isSample ? !!surface && innerReady : innerReady) : !!scene
 
   function lock() {
-    if (isA) onSubmit(isSample ? { surface, inner, sentence } : { inner, sentence })
-    else onSubmit({ scene, sentence })
+    if (isA) {
+      const base = needsObj ? { inner, innerObj } : { inner }
+      onSubmit(isSample ? { surface, ...base, sentence } : { ...base, sentence })
+    } else onSubmit({ scene, sentence })
   }
 
   return (
@@ -95,7 +117,10 @@ export default function GameBoard({ state, youId, onSubmit, onUnlock, onSkip, on
               title={isSample ? '你心里其实最想要的是？' : `猜：${sample?.nickname} 心里其实想要的是？`}
               hint={isSample ? '底下那层，往往才是真正的你' : '表面那层都看得见，难的是底下这层'}
             >
-              <OptionGrid kind={state.innerKind === 'needs' ? 'needs' : 'colors'} options={innerOpts} value={inner} onPick={setInner} />
+              <OptionGrid kind={state.innerKind === 'needs' ? 'needs' : 'colors'} options={innerOpts} value={inner} onPick={pickInner} />
+              {needsObj && (
+                <ObjectChooser need={innerNeed} value={innerObj} onPick={setInnerObj} isSample={isSample} />
+              )}
             </Section>
           )}
 
@@ -180,6 +205,8 @@ export default function GameBoard({ state, youId, onSubmit, onUnlock, onSkip, on
           {/* 每个人那句话 */}
           <Sentences state={state} reveal={reveal} />
 
+          <ObjectionBox state={state} reveal={reveal} youId={youId} onObjection={onObjection} />
+
           <div className="reveal__curiosity">💬 {reveal.curiosity}</div>
           <button className="btn btn--primary" onClick={onNext}>
             {state.pendingEnd ? '查看观测结算 →' : '下一轮 →'}
@@ -220,17 +247,48 @@ function OptionGrid({ kind, options, value, onPick }) {
   )
 }
 
+// 动词短语反应的对象选择：你 / 我（你=对方，我=自己；判定时服务端会按绝对人称归一）
+function ObjectChooser({ need, value, onPick, isSample }) {
+  const fill = (ch) => (need.tpl ? need.tpl.replace('{}', ch) : need.name)
+  const hint = isSample
+    ? '「我」＝你自己，「你」＝对方'
+    : `「你」＝${'你正在观察的那位'}，「我」＝你自己`
+  return (
+    <div className="objchooser">
+      <span className="objchooser__label">填空 · 选个对象：</span>
+      <button className={`objbtn ${value === 'you' ? 'objbtn--on' : ''}`} onClick={() => onPick('you')}>
+        {fill('你')}
+      </button>
+      <button className={`objbtn ${value === 'me' ? 'objbtn--on' : ''}`} onClick={() => onPick('me')}>
+        {fill('我')}
+      </button>
+      <span className="objchooser__hint">{hint}</span>
+    </div>
+  )
+}
+
+// 把某人选择的对象按「样本视角」翻译成可读字（样本本人选的直接显示；观察员的你↔我对调到样本视角）
+function objChar(innerObj, isSamplePick) {
+  if (innerObj !== 'me' && innerObj !== 'you') return ''
+  const abs = isSamplePick ? (innerObj === 'me' ? 'self' : 'partner') : innerObj === 'you' ? 'self' : 'partner'
+  return abs === 'self' ? '我' : '你'
+}
+
 function RevealGrid({ state, reveal, options }) {
   const field = reveal.kind === 'A' ? 'inner' : 'scene'
+  const innerSet = state.innerSet || []
+  const objNeed = (id) => innerSet.find((c) => c.key === id)?.obj
   return (
     <div className={`options options--${reveal.kind === 'A' ? (state.innerKind === 'needs' ? 'needs' : 'colors') : 'scenes'}`}>
       {options.map((o) => {
         const isTruth = reveal.truth === o.id
         const pickers = state.players.filter((p) => reveal.picks[p.id]?.[field] === o.id)
+        // 没被猜中的格子里若有观察员选了它，单独高亮（让"对方选的"更醒目）
+        const missPick = !isTruth && pickers.some((p) => p.id !== state.sampleId)
         return (
           <div
             key={o.id}
-            className={['opt', 'opt--static', o.exposure ? `exp-border-${o.exposure}` : '', isTruth ? 'opt--truth' : 'opt--dim'].join(' ')}
+            className={['opt', 'opt--static', o.exposure ? `exp-border-${o.exposure}` : '', isTruth ? 'opt--truth' : missPick ? 'opt--otherpick' : 'opt--dim'].join(' ')}
           >
             <div className="opt__title">{o.title}</div>
             {o.sub && <div className="opt__sub">{o.sub}</div>}
@@ -249,6 +307,9 @@ function RevealGrid({ state, reveal, options }) {
                     }`}
                   >
                     {p.nickname}
+                    {objNeed(o.id) && reveal.picks[p.id]?.innerObj
+                      ? `·${objChar(reveal.picks[p.id].innerObj, p.id === state.sampleId)}`
+                      : ''}
                     {p.id === state.sampleId ? ' ★' : reveal.correctIds.includes(p.id) ? ' ✓' : ' ✗'}
                   </span>
                 ))}
@@ -278,6 +339,122 @@ function Sentences({ state, reveal }) {
           <span className="said__text">「{text}」</span>
         </div>
       ))}
+    </div>
+  )
+}
+
+// 异议：翻牌后若双方选择不同，可声明「其实我们想法一样」。双方都点则改判为猜中。
+function ObjectionBox({ state, reveal, youId, onObjection }) {
+  const [open, setOpen] = useState(false)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [fileUrl, setFileUrl] = useState(null)
+  const [fileName, setFileName] = useState('')
+
+  const observers = state.players.filter((p) => p.connected && p.id !== state.sampleId)
+  const missExists = observers.some((o) => !reveal.correctIds.includes(o.id))
+  const objections = reveal.objections || []
+  const iRaised = objections.includes(youId)
+  const connCount = state.players.filter((p) => p.connected).length
+
+  if (reveal.objectionResolved) {
+    return (
+      <div className="objection objection--done">
+        🤝 异议达成：你们其实是一个意思，本轮改判为「彼此猜中」。这只是题库没覆盖到而已。
+        {reveal.objectionInfo?.length > 0 && (
+          <div className="objection__notes">
+            {reveal.objectionInfo.map((n, i) => (
+              <div key={i} className="objection__note">
+                <b>{n.nickname}</b>
+                {n.note && <span>：{n.note}</span>}
+                {n.url && <a href={n.url} target="_blank" rel="noreferrer"> 📎 查看上传</a>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (!missExists) return null
+
+  async function confirm() {
+    setBusy(true)
+    try {
+      let file = null
+      if (fileUrl) file = { url: fileUrl }
+      onObjection({ note: note.trim(), file })
+    } finally {
+      setBusy(false)
+      setOpen(false)
+    }
+  }
+
+  async function onFile(e) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setFileName(f.name)
+    const reader = new FileReader()
+    reader.onload = async () => {
+      try {
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dataUrl: reader.result })
+        })
+        const d = await res.json()
+        if (d.ok) setFileUrl(d.url)
+        else setFileName('上传失败：' + (d.error || ''))
+      } catch {
+        setFileName('上传失败，请重试')
+      }
+    }
+    reader.readAsDataURL(f)
+  }
+
+  return (
+    <div className="objection">
+      {!open && (
+        <button className="objection__btn" onClick={() => setOpen(true)} disabled={iRaised}>
+          🙋 异议！<span className="objection__q" title="其实我们的想法是一样的">？</span>
+          <span className="objection__sub">其实我们的想法是一样的</span>
+        </button>
+      )}
+      <div className="objection__status">
+        已提出异议：{objections.length}/{connCount}
+        {iRaised && ' · 你已提出，等待对方'}
+      </div>
+
+      {open && (
+        <div className="objection__panel">
+          <div className="objection__tip">
+            如果你们其实是一个意思、只是题目没覆盖到，双方都点「确认异议」即可改判为猜中。
+          </div>
+          <textarea
+            className="saybox__input"
+            rows={2}
+            maxLength={280}
+            placeholder="（选填）写下你们真实的反应是什么…"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <div className="objection__upload">
+            <label className="btn btn--ghost btn--sm">
+              📎 上传真实反应
+              <input type="file" accept="image/*" hidden onChange={onFile} />
+            </label>
+            {fileName && <span className="objection__fname">{fileUrl ? '✓ ' : '… '}{fileName}</span>}
+          </div>
+          <div className="actions">
+            <button className="btn btn--primary btn--sm" disabled={busy} onClick={confirm}>
+              确认异议（我们想法一致）
+            </button>
+            <button className="btn btn--ghost btn--sm" onClick={() => setOpen(false)}>
+              取消
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

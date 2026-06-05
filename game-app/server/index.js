@@ -3,7 +3,8 @@ import { createServer } from 'node:http'
 import { Server } from 'socket.io'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
 import { GameManager, ACHIEVEMENTS } from './game.js'
 import { DECK_LIST } from './decks.js'
 import { generateCustomDeck, CUSTOM_MODELS, FAMILY_TEMPLATE } from './custom.js'
@@ -22,7 +23,31 @@ const gm = new GameManager()
 const socketRoom = new Map()
 
 app.set('trust proxy', true)
-app.use(express.json({ limit: '64kb' }))
+app.use(express.json({ limit: '8mb' }))
+
+// 异议时上传的「真实反应」文件存放目录，并对外静态托管
+const UPLOAD_DIR = join(__dirname, 'data', 'uploads')
+mkdirSync(UPLOAD_DIR, { recursive: true })
+app.use('/uploads', express.static(UPLOAD_DIR))
+
+const EXT_BY_MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }
+
+// 真实反应上传：接收 dataURL（图片），落盘后返回可访问 url
+app.post('/api/upload', (req, res) => {
+  try {
+    const { dataUrl } = req.body || {}
+    const m = /^data:([^;]+);base64,(.+)$/.exec(dataUrl || '')
+    if (!m) return res.status(400).json({ ok: false, error: '文件格式不支持' })
+    const buf = Buffer.from(m[2], 'base64')
+    if (buf.length > 6 * 1024 * 1024) return res.status(400).json({ ok: false, error: '文件过大（上限 6MB）' })
+    const ext = EXT_BY_MIME[m[1]] || 'bin'
+    const name = `${Date.now()}-${randomBytes(3).toString('hex')}.${ext}`
+    writeFileSync(join(UPLOAD_DIR, name), buf)
+    res.json({ ok: true, url: `/uploads/${name}` })
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message || '上传失败' })
+  }
+})
 
 // 定制题库：返回可选模型 + 家庭情况模板
 app.get('/api/custom-meta', (req, res) => {
@@ -130,6 +155,13 @@ io.on('connection', (socket) => {
   socket.on('unlockPick', () =>
     withRoom((room) => {
       gm.unlockPick(room, socket.id)
+      broadcast(room.id)
+    })
+  )
+
+  socket.on('raiseObjection', ({ note, file } = {}) =>
+    withRoom((room) => {
+      gm.raiseObjection(room, socket.id, { note, file })
       broadcast(room.id)
     })
   )

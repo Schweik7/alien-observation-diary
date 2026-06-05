@@ -13,20 +13,31 @@ export const COLORS = [
 ]
 
 // 夫妻版「里层」——心里真正的需要/感受（玩法A·成人牌库用，从夫妻版题卡归纳）
+// obj:true 表示是「动词短语」反应，需要再选一个对象填入 tpl 里的 {}（你 / 我）。
+//   注意：「你/我」是相对说话人的——样本说的「我」= 观察员眼里的「你」，做判断时按绝对人称归一。
 export const NEEDS = [
-  { key: 'care', emoji: '🫂', name: '想被在乎', desc: '被放在心上、被珍视' },
-  { key: 'approve', emoji: '👏', name: '想被认可', desc: '我的付出和价值被看见、被肯定' },
-  { key: 'under', emoji: '🫶', name: '想被理解', desc: '先懂我的感受，别急着评判或讲道理' },
+  { key: 'care', emoji: '🫂', name: '想被在乎', obj: true, tpl: '想{}被在乎', desc: '被放在心上、被珍视' },
+  { key: 'approve', emoji: '👏', name: '想被认可', obj: true, tpl: '想{}被认可', desc: '付出和价值被看见、被肯定' },
+  { key: 'under', emoji: '🫶', name: '想被理解', obj: true, tpl: '想{}被理解', desc: '先懂感受，别急着评判或讲道理' },
+  { key: 'close', emoji: '💗', name: '想更亲近', obj: true, tpl: '想更亲近{}', desc: '想靠近、想被想要' },
+  { key: 'fear', emoji: '😨', name: '怕失去', obj: true, tpl: '怕失去{}', desc: '关系上的不安、怕被丢下' },
   { key: 'space', emoji: '🚪', name: '想要空间', desc: '让我喘口气、别逼太紧、给点边界' },
-  { key: 'fear', emoji: '😨', name: '怕失去你', desc: '怕你不要我了、关系上的不安' },
   { key: 'unfair', emoji: '⚖️', name: '觉得不公平', desc: '我付出更多或被冤枉，心里憋屈' },
   { key: 'guilt', emoji: '🙇', name: '我有点愧疚', desc: '知道自己做得不够，只是没说出口' },
   { key: 'tired', emoji: '🫠', name: '我就是累了', desc: '耗竭，没别的意思，别多想' },
   { key: 'lost', emoji: '😟', name: '我也慌', desc: '怕做错、不知道怎么办才好' },
-  { key: 'close', emoji: '💗', name: '想更亲近你', desc: '想被你想要、想靠近你' },
   { key: 'middle', emoji: '😣', name: '夹在中间', desc: '在父母和你之间为难' },
-  { key: 'warm', emoji: '🤍', name: '其实心里是暖的', desc: '底下是爱、是感激、是想靠近你' }
+  { key: 'warm', emoji: '🤍', name: '其实心里是暖的', desc: '底下是爱、是感激、是想靠近你' },
+  { key: 'nvm', emoji: '🤷', name: '这不重要', desc: '这件事我是真的无所谓，别纠结了' }
 ]
+
+// 「你/我」归一到绝对人称：样本视角 我=本人(self)、你=对方(partner)；观察员视角相反。
+// 返回 'self' | 'partner' | null（非动词短语反应没有对象）
+function absObject(innerObj, isSamplePicker) {
+  if (innerObj !== 'me' && innerObj !== 'you') return null
+  if (isSamplePicker) return innerObj === 'me' ? 'self' : 'partner'
+  return innerObj === 'you' ? 'self' : 'partner'
+}
 
 // 里层选项：成人牌库用「需要/感受」，孩子牌库沿用四色（第一类）
 function innerSetFor(deckKey) {
@@ -240,6 +251,9 @@ export class GameManager {
     room.current = this.drawItemForRole(room, sampleGender)
     room.picks = new Map()
     room.reveal = null
+    room.objections = new Set()
+    room.objectionInfo = {}
+    room.objectionResolved = false
     room.phase = 'select'
   }
 
@@ -259,6 +273,69 @@ export class GameManager {
     room.picks.delete(socketId)
   }
 
+  // 异议：翻牌后若双方选择不同，任一方可声明「其实我们想法一样，只是题没覆盖到」。
+  // 当所有在场玩家都点了异议，本轮改判为「全员猜中」。可附真实反应文字 / 上传文件。
+  raiseObjection(room, socketId, { note = '', file = null } = {}) {
+    if (room.phase !== 'reveal' || !room.reveal) return
+    if (room.reveal.allCorrect && !room.objectionResolved) return // 本就全中，无需异议
+    if (!room.players.get(socketId)) return
+    room.objections = room.objections || new Set()
+    room.objections.add(socketId)
+    const pl = room.players.get(socketId)
+    if (note || file) {
+      room.objectionInfo[socketId] = {
+        nickname: pl?.nickname || '',
+        note: (note || '').toString().slice(0, 280),
+        url: file?.url || null
+      }
+    }
+    const conn = this.connectedPlayers(room)
+    if (!room.objectionResolved && conn.length >= 2 && conn.every((p) => room.objections.has(p.id))) {
+      this.resolveObjection(room)
+    }
+  }
+
+  // 异议达成：撤销原判，改判为全员猜中
+  resolveObjection(room) {
+    if (room.objectionResolved || !room.reveal) return
+    const r = room.reveal
+    const conn = this.connectedPlayers(room)
+    const observers = conn.filter((p) => p.id !== room.sampleId)
+
+    // 撤销原始计分
+    room.understanding = Math.max(0, room.understanding - (r.delta || 0))
+    if (r.noneCorrect) room.failures = Math.max(0, room.failures - 1)
+    for (const id of r.correctIds || []) {
+      const p = room.players.get(id)
+      if (p) p.correct = Math.max(0, p.correct - 1)
+    }
+
+    // 改判：全员猜中（含心意相通奖励）
+    const newDelta = observers.length > 0 ? observers.length + 1 : 0
+    room.understanding = Math.max(0, Math.min(20, room.understanding + newDelta))
+    for (const ob of observers) {
+      const p = room.players.get(ob.id)
+      if (p) p.correct += 1
+    }
+    room.allCorrectRounds = (room.allCorrectRounds || 0) + 1
+
+    r.correctIds = observers.map((p) => p.id)
+    r.allCorrect = true
+    r.noneCorrect = false
+    r.delta = newDelta
+    room.objectionResolved = true
+
+    // 把真实反应记进观察日记
+    const last = room.diary[room.diary.length - 1]
+    if (last) {
+      last.guessed = true
+      last.objection = {
+        resolved: true,
+        notes: Object.values(room.objectionInfo).filter((x) => x.note || x.url)
+      }
+    }
+  }
+
   submitPick(room, socketId, pick = {}) {
     if (room.phase !== 'select') return
     const p = room.players.get(socketId)
@@ -268,8 +345,14 @@ export class GameManager {
     const clean = { sentence: (pick.sentence || '').toString().trim().slice(0, 140) }
     if (room.current.kind === 'A') {
       // 里层：所有人都要给（样本=真实里层，观察员=猜测的里层）
-      if (!innerSet.some((c) => c.key === pick.inner)) return
+      const need = innerSet.find((c) => c.key === pick.inner)
+      if (!need) return
       clean.inner = pick.inner
+      // 动词短语反应：必须再选对象（你/我）
+      if (need.obj) {
+        if (pick.innerObj !== 'me' && pick.innerObj !== 'you') return
+        clean.innerObj = pick.innerObj
+      }
       if (isSample) {
         // 样本还要给「表层」行为反应（四色）
         if (!COLORS.some((c) => c.key === pick.surface)) return
@@ -295,11 +378,20 @@ export class GameManager {
     const samplePick = room.picks.get(room.sampleId) || {}
     // 玩法A猜「里层」，玩法B猜「场景」
     const truth = isA ? samplePick.inner : samplePick.scene
+    const innerSetJudge = innerSetFor(room.deckKey)
+    const truthNeed = isA ? innerSetJudge.find((c) => c.key === truth) : null
+    const truthObjAbs = truthNeed?.obj ? absObject(samplePick.innerObj, true) : null
     const observers = conn.filter((p) => p.id !== room.sampleId)
     const correctIds = observers
       .filter((p) => {
         const pk = room.picks.get(p.id) || {}
-        return (isA ? pk.inner : pk.scene) === truth
+        if (isA) {
+          if (pk.inner !== truth) return false
+          // 动词短语反应：对象（归一到绝对人称后）也要一致
+          if (truthNeed?.obj) return absObject(pk.innerObj, false) === truthObjAbs
+          return true
+        }
+        return pk.scene === truth
       })
       .map((p) => p.id)
 
@@ -357,9 +449,14 @@ export class GameManager {
     for (const [id, c] of room.picks) picks[id] = c
 
     const innerSet = innerSetFor(room.deckKey)
-    const labelInner = (k) => {
+    // 把动词短语反应按所选对象填好（样本视角：me→我 / you→你）
+    const fillNeed = (c, innerObj) => {
+      if (c.obj && c.tpl) return c.tpl.replace('{}', innerObj === 'me' ? '我' : '你')
+      return c.name
+    }
+    const labelInner = (k, innerObj) => {
       const c = innerSet.find((x) => x.key === k)
-      return c ? `${c.emoji} ${c.name}` : k || '—'
+      return c ? `${c.emoji} ${fillNeed(c, innerObj)}` : k || '—'
     }
     const labelColor = (k) => {
       const c = COLORS.find((x) => x.key === k)
@@ -371,7 +468,7 @@ export class GameManager {
     }
     const sampleName = room.players.get(room.sampleId)?.nickname || '样本'
     const surfaceLabel = isA && samplePick.surface ? labelColor(samplePick.surface) : null
-    const innerLabel = isA ? labelInner(truth) : labelScene(truth)
+    const innerLabel = isA ? labelInner(truth, samplePick.innerObj) : labelScene(truth)
     const gap = !!(isA && samplePick.surface && samplePick.surface !== samplePick.inner)
 
     room.reveal = {
@@ -505,7 +602,15 @@ export class GameManager {
         room.current && room.phase !== 'lobby' && room.phase !== 'gameover'
           ? room.current
           : null,
-      reveal: room.phase === 'reveal' ? room.reveal : null,
+      reveal:
+        room.phase === 'reveal'
+          ? {
+              ...room.reveal,
+              objections: [...(room.objections || [])],
+              objectionResolved: !!room.objectionResolved,
+              objectionInfo: Object.values(room.objectionInfo || {})
+            }
+          : null,
       pendingEnd: room.pendingEnd,
       result: room.result,
       diary: room.phase === 'gameover' ? room.diary : null,

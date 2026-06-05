@@ -5,6 +5,7 @@ import Lobby from './screens/Lobby.jsx'
 import GameBoard from './screens/GameBoard.jsx'
 import GameOver from './screens/GameOver.jsx'
 import AchievementsModal from './screens/Achievements.jsx'
+import Invite from './screens/Invite.jsx'
 
 export default function App() {
   const [connected, setConnected] = useState(socket.connected)
@@ -94,6 +95,7 @@ export default function App() {
           onSubmit={submit}
           onUnlock={() => emit('unlockPick')}
           onSkip={() => emit('skipCard')}
+          onObjection={(payload) => emit('raiseObjection', payload || {})}
           onNext={() => emit('nextRound')}
         />
       )}
@@ -112,14 +114,8 @@ export default function App() {
 
 function TopBar({ state, connected, onLeave, achievements }) {
   const link = `${window.location.origin}${window.location.pathname}?room=${state.roomId}`
-  const [copied, setCopied] = useState(false)
+  const [showInvite, setShowInvite] = useState(false)
   const [showAch, setShowAch] = useState(false)
-  function copy() {
-    navigator.clipboard?.writeText(link).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    })
-  }
   return (
     <header className="topbar">
       <div className="topbar__left">
@@ -127,8 +123,8 @@ function TopBar({ state, connected, onLeave, achievements }) {
         <span className="topbar__room" title="房间号">
           房间 <b>{state.roomId}</b>
         </span>
-        <button className="btn btn--ghost btn--sm" onClick={copy}>
-          {copied ? '已复制邀请链接 ✓' : '复制邀请链接'}
+        <button className="btn btn--ghost btn--sm" onClick={() => setShowInvite(true)}>
+          📨 邀请 / 二维码
         </button>
       </div>
       <div className="topbar__right">
@@ -141,6 +137,7 @@ function TopBar({ state, connected, onLeave, achievements }) {
           离开
         </button>
       </div>
+      {showInvite && <Invite link={link} roomId={state.roomId} onClose={() => setShowInvite(false)} />}
       {showAch && (
         <AchievementsModal
           catalog={achievements}
