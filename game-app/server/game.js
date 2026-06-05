@@ -1,4 +1,8 @@
 import { getDeck } from './decks.js'
+import { ACHIEVEMENTS, evaluateAchievements } from './achievements.js'
+
+// 透传成就定义，便于 index.js 从 game.js 统一引入
+export { ACHIEVEMENTS }
 
 // 四色反应（玩法A的「表层」——表现出来的行为）
 export const COLORS = [
@@ -90,15 +94,24 @@ export class GameManager {
     return this.rooms.get((id || '').toUpperCase())
   }
 
-  addPlayer(room, socketId, nickname) {
+  addPlayer(room, socketId, nickname, gender = 'male') {
     const isFirst = room.players.size === 0
     room.players.set(socketId, {
       id: socketId,
       nickname,
+      gender: gender === 'female' ? 'female' : 'male',
       isHost: isFirst,
       connected: true,
       correct: 0,
-      sampleTimes: 0
+      sampleTimes: 0,
+      // 成就统计（每局开始重置）
+      streak: 0,
+      maxStreak: 0,
+      sentenceCount: 0,
+      longestSentence: 0,
+      submits: 0,
+      gapAsSample: 0,
+      redAsSample: 0
     })
     if (isFirst) room.hostId = socketId
     if (!room.order.includes(socketId)) room.order.push(socketId)
@@ -156,12 +169,22 @@ export class GameManager {
     room.result = null
     room.diary = []
     room.log = []
+    room.skipCount = 0
+    room.allCorrectRounds = 0
+    room.usedIds = new Set()
     const deck = getDeck(room.deckKey)
     room.items = shuffle(deck.items)
     room.drawIndex = 0
     for (const p of room.players.values()) {
       p.correct = 0
       p.sampleTimes = 0
+      p.streak = 0
+      p.maxStreak = 0
+      p.sentenceCount = 0
+      p.longestSentence = 0
+      p.submits = 0
+      p.gapAsSample = 0
+      p.redAsSample = 0
     }
     this.log(room, `观测任务开始 · 牌库「${deck.label}」· 目标理解值 ${room.target} · 共 ${room.totalRounds} 轮`)
     this.beginRound(room, false)
@@ -173,6 +196,23 @@ export class GameManager {
       room.drawIndex = 0
     }
     return room.items[room.drawIndex++]
+  }
+
+  // 夫妻版：按当前样本性别抽取匹配角色的卡（male→丈夫为样本/双方皆可，female→妻子为样本/双方皆可）
+  // 其它牌库所有卡 role 均为 any，等价于不限。用 usedIds 做「不放回」抽取，抽尽后仅重置同角色池。
+  drawItemForRole(room, gender) {
+    if (room.deckKey !== 'couples') return this.drawItem(room)
+    const ok = (it) => it.role === 'any' || it.role === gender
+    if (!room.usedIds) room.usedIds = new Set()
+    let pool = room.items.filter((it) => ok(it) && !room.usedIds.has(it.id))
+    if (pool.length === 0) {
+      // 该角色的卡抽尽：只重置该角色，保留其它角色已用记录
+      room.usedIds = new Set([...room.usedIds].filter((id) => !ok(room.items.find((x) => x.id === id) || {})))
+      pool = room.items.filter((it) => ok(it))
+    }
+    const item = pool[Math.floor(Math.random() * pool.length)] || this.drawItem(room)
+    room.usedIds.add(item.id)
+    return item
   }
 
   beginRound(room, keepSample) {
@@ -196,7 +236,8 @@ export class GameManager {
       const sp = room.players.get(room.sampleId)
       if (sp) sp.sampleTimes++
     }
-    room.current = this.drawItem(room)
+    const sampleGender = room.players.get(room.sampleId)?.gender || 'male'
+    room.current = this.drawItemForRole(room, sampleGender)
     room.picks = new Map()
     room.reveal = null
     room.phase = 'select'
@@ -205,9 +246,17 @@ export class GameManager {
   skipCard(room, socketId) {
     if (room.phase !== 'select') return
     // 任何人可在出牌阶段跳过（主要用于红卡）
+    room.skipCount = (room.skipCount || 0) + 1
     this.log(room, `有人跳过了一张「${room.current.exposure}」卡，重新抽取`)
-    room.current = this.drawItem(room)
+    const sampleGender = room.players.get(room.sampleId)?.gender || 'male'
+    room.current = this.drawItemForRole(room, sampleGender)
     room.picks = new Map()
+  }
+
+  // 取消锁定：翻牌前允许收回自己的选择，重新挑
+  unlockPick(room, socketId) {
+    if (room.phase !== 'select') return
+    room.picks.delete(socketId)
   }
 
   submitPick(room, socketId, pick = {}) {
@@ -273,6 +322,36 @@ export class GameManager {
     room.understanding = Math.max(0, Math.min(20, room.understanding + delta))
     room.round += 1
     for (const id of correctIds) room.players.get(id).correct += 1
+    if (allCorrect) room.allCorrectRounds = (room.allCorrectRounds || 0) + 1
+
+    // ===== 成就统计 =====
+    const correctSet = new Set(correctIds)
+    // 观察员连胜：猜中 +1，否则清零
+    for (const ob of observers) {
+      if (correctSet.has(ob.id)) {
+        ob.streak += 1
+        ob.maxStreak = Math.max(ob.maxStreak, ob.streak)
+      } else {
+        ob.streak = 0
+      }
+    }
+    // 所有提交者：记一次参与、统计句子
+    for (const [id, c] of room.picks) {
+      const pl = room.players.get(id)
+      if (!pl) continue
+      pl.submits += 1
+      const len = (c.sentence || '').length
+      if (len > 0) {
+        pl.sentenceCount += 1
+        pl.longestSentence = Math.max(pl.longestSentence, len)
+      }
+    }
+    // 样本相关：表里不一、面对红卡
+    const sampleP = room.players.get(room.sampleId)
+    if (sampleP) {
+      if (isA && samplePick.surface && samplePick.surface !== samplePick.inner) sampleP.gapAsSample += 1
+      if (room.current.exposure === '红') sampleP.redAsSample += 1
+    }
 
     const picks = {}
     for (const [id, c] of room.picks) picks[id] = c
@@ -367,7 +446,8 @@ export class GameManager {
       failCap: room.failCap,
       rounds: room.round,
       grade,
-      mvp: mvp ? { nickname: mvp.nickname, correct: mvp.correct } : null
+      mvp: mvp && mvp.correct > 0 ? { nickname: mvp.nickname, correct: mvp.correct } : null,
+      achievements: evaluateAchievements(room)
     }
     room.phase = 'gameover'
     const msg =
@@ -414,6 +494,7 @@ export class GameManager {
         .map((p) => ({
           id: p.id,
           nickname: p.nickname,
+          gender: p.gender,
           isHost: p.isHost,
           connected: p.connected,
           correct: p.correct,

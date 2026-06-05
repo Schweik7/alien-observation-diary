@@ -84,6 +84,13 @@ function groupPrefix(id) {
   return id.replace(/-R$/, '').replace(/-S\d+$/, '')
 }
 
+// 从「备注/归属」推断该卡指定的样本性别角色：male=丈夫为样本，female=妻子为样本，any=双方皆可/无限制
+function roleFromNote(note = '') {
+  if (note.includes('丈夫')) return 'male'
+  if (note.includes('妻子')) return 'female'
+  return 'any'
+}
+
 function buildPlayable(cards) {
   const items = []
   // 玩法A：事件卡
@@ -97,7 +104,8 @@ function buildPlayable(cards) {
         name: c.name,
         description: c.description,
         question: c.questionOrOwner,
-        owner: c.note
+        owner: c.note,
+        role: roleFromNote(c.note)
       })
     }
   }
@@ -127,6 +135,7 @@ function buildPlayable(cards) {
           reactionName: c.name,
           reactionDesc: c.description,
           owner: c.note,
+          role: roleFromNote(c.note),
           scenes
         })
       }

@@ -1,5 +1,10 @@
-export default function GameOver({ state, isHost, onRestart }) {
+import { useState } from 'react'
+import { AchievementList } from './Achievements.jsx'
+
+export default function GameOver({ state, isHost, achievements = [], onRestart }) {
   const r = state.result || {}
+  const earned = r.achievements || []
+  const [showAll, setShowAll] = useState(false)
   const title =
     r.type === 'win'
       ? '🎉 合作胜利'
@@ -56,6 +61,22 @@ export default function GameOver({ state, isHost, onRestart }) {
                 <span className="rankrow__val">猜中 {p.correct} · 当样本 {p.sampleTimes} 次</span>
               </div>
             ))}
+        </div>
+
+        <div className="achsection">
+          <div className="achsection__head">
+            <span className="diary__head">🏅 本局解锁成就（{earned.length}）</span>
+            <button className="linkbtn" onClick={() => setShowAll((v) => !v)}>
+              {showAll ? '只看已解锁' : '查看全部成就 →'}
+            </button>
+          </div>
+          {earned.length === 0 && !showAll && (
+            <p className="diary__intro">这一局没有点亮成就——下一局多写写心里话、多猜中几次试试。</p>
+          )}
+          <AchievementList
+            catalog={showAll ? achievements : achievements.filter((a) => earned.some((e) => e.key === a.key))}
+            earned={earned}
+          />
         </div>
 
         {Array.isArray(state.diary) && state.diary.length > 0 && (

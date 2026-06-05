@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 const EXP_LABEL = { 绿: '低暴露', 黄: '真实小事', 红: '掏心窝 · 可跳过' }
 
-export default function GameBoard({ state, youId, onSubmit, onSkip, onNext }) {
+export default function GameBoard({ state, youId, onSubmit, onUnlock, onSkip, onNext }) {
   const cur = state.current
   const me = state.players.find((p) => p.id === youId)
   const isSample = state.sampleId === youId
@@ -30,14 +30,8 @@ export default function GameBoard({ state, youId, onSubmit, onSkip, onNext }) {
   const innerOpts = (state.innerSet || state.colors).map((c) => ({ id: c.key, title: `${c.emoji} ${c.name}`, sub: c.desc }))
   const sceneOpts = (cur.scenes || []).map((s) => ({ id: s.id, title: s.name, sub: s.description, exposure: s.exposure }))
 
-  // 锁定条件：样本必须写一句话；观察员可留空
-  const canLock = isA
-    ? isSample
-      ? surface && inner && sentence.trim()
-      : !!inner
-    : isSample
-    ? scene && sentence.trim()
-    : !!scene
+  // 锁定条件：一句话不再是必填项（可计入成就但不强制）
+  const canLock = isA ? (isSample ? !!(surface && inner) : !!inner) : !!scene
 
   function lock() {
     if (isA) onSubmit(isSample ? { surface, inner, sentence } : { inner, sentence })
@@ -114,8 +108,8 @@ export default function GameBoard({ state, youId, onSubmit, onSkip, onNext }) {
           {/* 一句话 */}
           <div className="saybox">
             <label className="saybox__label">
-              💬 {isSample ? '说说你心里那一句真话' : '你为什么这么猜？（可留空，也可以直接说出来）'}
-              {isSample && <span className="saybox__req">（样本必填）</span>}
+              💬 {isSample ? '说说你心里那一句真话' : '你为什么这么猜？'}
+              <span className="saybox__opt">（选填 · 写了可点亮成就）</span>
             </label>
             <textarea
               className="saybox__input"
@@ -146,11 +140,14 @@ export default function GameBoard({ state, youId, onSubmit, onSkip, onNext }) {
       )}
 
       {state.phase === 'select' && submitted && (
-        <div className="actions">
+        <div className="actions actions--col">
           <div className="submitted-note">
             <span className="spinner" /> 你已锁定，等待其他人…
             <SubmitProgress state={state} />
           </div>
+          <button className="btn btn--ghost" onClick={onUnlock}>
+            ↩ 取消锁定，重新选
+          </button>
         </div>
       )}
 

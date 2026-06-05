@@ -4,7 +4,7 @@ import { Server } from 'socket.io'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { existsSync } from 'node:fs'
-import { GameManager } from './game.js'
+import { GameManager, ACHIEVEMENTS } from './game.js'
 import { DECK_LIST } from './decks.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -39,28 +39,29 @@ function broadcast(roomId) {
 
 io.on('connection', (socket) => {
   socket.emit('decks', DECK_LIST)
+  socket.emit('achievements', ACHIEVEMENTS)
 
   function joinSocketToRoom(room) {
     socket.join(room.id)
     socketRoom.set(socket.id, room.id)
   }
 
-  socket.on('createRoom', ({ nickname, deckKey }, cb) => {
+  socket.on('createRoom', ({ nickname, deckKey, gender }, cb) => {
     const name = (nickname || '').trim().slice(0, 16) || '神秘观察员'
     const room = gm.createRoom(deckKey || 'highgrade')
-    gm.addPlayer(room, socket.id, name)
+    gm.addPlayer(room, socket.id, name, gender)
     joinSocketToRoom(room)
     cb && cb({ ok: true, roomId: room.id, youId: socket.id })
     broadcast(room.id)
   })
 
-  socket.on('joinRoom', ({ roomId, nickname }, cb) => {
+  socket.on('joinRoom', ({ roomId, nickname, gender }, cb) => {
     const room = gm.getRoom(roomId)
     if (!room) return cb && cb({ ok: false, error: '房间不存在，请检查房间号' })
     if (room.phase !== 'lobby') return cb && cb({ ok: false, error: '游戏已经开始，无法中途加入' })
     if (gm.connectedPlayers(room).length >= 8) return cb && cb({ ok: false, error: '房间已满（上限 8 人）' })
     const name = (nickname || '').trim().slice(0, 16) || '神秘观察员'
-    gm.addPlayer(room, socket.id, name)
+    gm.addPlayer(room, socket.id, name, gender)
     joinSocketToRoom(room)
     cb && cb({ ok: true, roomId: room.id, youId: socket.id })
     broadcast(room.id)
@@ -104,6 +105,13 @@ io.on('connection', (socket) => {
     })
   )
 
+  socket.on('unlockPick', () =>
+    withRoom((room) => {
+      gm.unlockPick(room, socket.id)
+      broadcast(room.id)
+    })
+  )
+
   socket.on('nextRound', () =>
     withRoom((room) => {
       gm.next(room)
@@ -141,7 +149,7 @@ io.on('connection', (socket) => {
   })
 })
 
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  地球人观察日记 · 在线版服务已启动`)
   console.log(`  http://localhost:${PORT}  (生产) / vite http://localhost:5174 (开发)`)
   console.log(`  注意：端口可用 PORT 环境变量覆盖（默认 4001，避开微信占用的 3001）\n`)

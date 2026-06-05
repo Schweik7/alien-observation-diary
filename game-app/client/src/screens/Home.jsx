@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
 import { emit } from '../net.js'
-import { NICKNAMES, randomNickname } from '../nicknames.js'
+import { NICKNAMES_MALE, NICKNAMES_FEMALE, randomNickname } from '../nicknames.js'
+import AchievementsModal from './Achievements.jsx'
 
-export default function Home({ decks, connected, onEnter }) {
-  const [nickname, setNickname] = useState(() => randomNickname())
+export default function Home({ decks, achievements, connected, onEnter }) {
+  const [gender, setGender] = useState('male')
+  const [nickname, setNickname] = useState(() => randomNickname('male'))
   const [deckKey, setDeckKey] = useState('highgrade')
   const [joinCode, setJoinCode] = useState('')
   const [mode, setMode] = useState('create') // create | join
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [showAch, setShowAch] = useState(false)
 
   // 从邀请链接 ?room=XXXX 预填
   useEffect(() => {
@@ -20,11 +23,16 @@ export default function Home({ decks, connected, onEnter }) {
     }
   }, [])
 
+  function pickName(name, g) {
+    setNickname(name)
+    setGender(g)
+  }
+
   function create() {
     if (!connected) return setError('正在连接服务器，请稍候…')
     setBusy(true)
     setError('')
-    emit('createRoom', { nickname, deckKey }, (res) => {
+    emit('createRoom', { nickname, deckKey, gender }, (res) => {
       setBusy(false)
       if (res?.ok) {
         window.history.replaceState({}, '', `${window.location.pathname}?room=${res.roomId}`)
@@ -38,7 +46,7 @@ export default function Home({ decks, connected, onEnter }) {
     if (!joinCode.trim()) return setError('请输入房间号')
     setBusy(true)
     setError('')
-    emit('joinRoom', { roomId: joinCode.trim().toUpperCase(), nickname }, (res) => {
+    emit('joinRoom', { roomId: joinCode.trim().toUpperCase(), nickname, gender }, (res) => {
       setBusy(false)
       if (res?.ok) {
         window.history.replaceState({}, '', `${window.location.pathname}?room=${res.roomId}`)
@@ -65,21 +73,56 @@ export default function Home({ decks, connected, onEnter }) {
               onChange={(e) => setNickname(e.target.value)}
               placeholder="输入或挑一个代号"
             />
-            <button className="btn btn--ghost" onClick={() => setNickname(randomNickname())}>
+            <div className="gender-toggle">
+              <button
+                className={`gbtn gbtn--m ${gender === 'male' ? 'gbtn--active' : ''}`}
+                onClick={() => setGender('male')}
+              >
+                ♂ 男
+              </button>
+              <button
+                className={`gbtn gbtn--f ${gender === 'female' ? 'gbtn--active' : ''}`}
+                onClick={() => setGender('female')}
+              >
+                ♀ 女
+              </button>
+            </div>
+            <button className="btn btn--ghost" onClick={() => setNickname(randomNickname(gender))}>
               换一个 🎲
             </button>
           </div>
-          <div className="nick-grid">
-            {NICKNAMES.slice(0, 24).map((n) => (
-              <button
-                key={n}
-                className={`chip ${n === nickname ? 'chip--active' : ''}`}
-                onClick={() => setNickname(n)}
-              >
-                {n}
-              </button>
-            ))}
+
+          <div className="nick-cols">
+            <div className="nick-col">
+              <div className="nick-col__head nick-col__head--m">♂ 男生代号</div>
+              <div className="nick-grid">
+                {NICKNAMES_MALE.slice(0, 12).map((n) => (
+                  <button
+                    key={n}
+                    className={`chip ${n === nickname ? 'chip--active' : ''}`}
+                    onClick={() => pickName(n, 'male')}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="nick-col">
+              <div className="nick-col__head nick-col__head--f">♀ 女生代号</div>
+              <div className="nick-grid">
+                {NICKNAMES_FEMALE.slice(0, 12).map((n) => (
+                  <button
+                    key={n}
+                    className={`chip ${n === nickname ? 'chip--active' : ''}`}
+                    onClick={() => pickName(n, 'female')}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
+          <div className="nick-hint">夫妻版会按你的性别发对应角色的题（问丈夫 / 问妻子）。</div>
         </section>
 
         <div className="tabs">
@@ -127,9 +170,16 @@ export default function Home({ decks, connected, onEnter }) {
 
         {error && <div className="error-bar">{error}</div>}
         <div className="home__foot">
-          {connected ? '● 服务器已连接' : '○ 正在连接服务器…'} · 支持 2–8 人
+          {connected ? '● 服务器已连接' : '○ 正在连接服务器…'} · 支持 2–8 人 ·{' '}
+          <button className="linkbtn" onClick={() => setShowAch(true)}>
+            🏅 成就图鉴
+          </button>
         </div>
       </div>
+
+      {showAch && (
+        <AchievementsModal catalog={achievements} earned={[]} onClose={() => setShowAch(false)} />
+      )}
     </div>
   )
 }
