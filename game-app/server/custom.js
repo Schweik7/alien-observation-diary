@@ -11,7 +11,8 @@ const DECK_DIR = join(DATA_DIR, 'custom-decks')
 const RECORDS = join(DATA_DIR, 'records.jsonl')
 mkdirSync(DECK_DIR, { recursive: true })
 
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || 'sk-a5b8a65db37d4ed6b36982c735595763'
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY
+if (!DEEPSEEK_API_KEY) throw new Error('未设置环境变量 DEEPSEEK_API_KEY，定制题库功能无法使用')
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions'
 
 // 用户可选的两个模型（标签 -> 实际 API model id）

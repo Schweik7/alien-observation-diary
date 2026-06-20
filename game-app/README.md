@@ -9,6 +9,17 @@
 - 前端：Vite + React + socket.io-client
 - 牌库：复用项目的三套 CSV（高年级 / 低年级 / 夫妻版），服务端启动时解析
 
+## 环境变量
+
+定制题库功能（调用 DeepSeek AI 生成专属题目）需要设置 API Key：
+
+```bash
+cp .env.example .env
+# 然后编辑 .env，填入你的 DeepSeek API Key
+```
+
+不设置此变量时，游戏其余功能正常，仅定制题库无法使用。
+
 ## 运行
 
 ```bash
